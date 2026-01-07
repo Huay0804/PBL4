@@ -1,0 +1,1074 @@
+{
+    "description": "",
+    "tags": [],
+    "size": {
+        "height": 1024,
+        "width": 2041
+    },
+    "objects": [
+        {
+            "id": 1166091365,
+            "classId": 11382882,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:40:16.812Z",
+            "tags": [],
+            "classTitle": "15",
+            "points": {
+                "exterior": [
+                    [
+                        1524,
+                        354
+                    ],
+                    [
+                        1503,
+                        438
+                    ],
+                    [
+                        1514,
+                        507
+                    ],
+                    [
+                        1505,
+                        546
+                    ],
+                    [
+                        1463,
+                        542
+                    ],
+                    [
+                        1412,
+                        551
+                    ],
+                    [
+                        1420,
+                        473
+                    ],
+                    [
+                        1434,
+                        412
+                    ],
+                    [
+                        1473,
+                        351
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091375,
+            "classId": 11382896,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "18",
+            "points": {
+                "exterior": [
+                    [
+                        1593,
+                        690
+                    ],
+                    [
+                        1556,
+                        644
+                    ],
+                    [
+                        1525,
+                        594
+                    ],
+                    [
+                        1488,
+                        559
+                    ],
+                    [
+                        1430,
+                        579
+                    ],
+                    [
+                        1407,
+                        596
+                    ],
+                    [
+                        1410,
+                        644
+                    ],
+                    [
+                        1468,
+                        687
+                    ],
+                    [
+                        1523,
+                        737
+                    ],
+                    [
+                        1563,
+                        747
+                    ],
+                    [
+                        1533,
+                        702
+                    ],
+                    [
+                        1515,
+                        677
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091374,
+            "classId": 11382904,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:43:21.639Z",
+            "tags": [],
+            "classTitle": "20",
+            "points": {
+                "exterior": [
+                    [
+                        1344,
+                        815
+                    ],
+                    [
+                        1324,
+                        730
+                    ],
+                    [
+                        1329,
+                        649
+                    ],
+                    [
+                        1320,
+                        605
+                    ],
+                    [
+                        1248,
+                        609
+                    ],
+                    [
+                        1246,
+                        654
+                    ],
+                    [
+                        1279,
+                        742
+                    ],
+                    [
+                        1301,
+                        790
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091376,
+            "classId": 11382905,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:44:22.544Z",
+            "tags": [],
+            "classTitle": "21",
+            "points": {
+                "exterior": [
+                    [
+                        1242,
+                        827
+                    ],
+                    [
+                        1250,
+                        727
+                    ],
+                    [
+                        1251,
+                        658
+                    ],
+                    [
+                        1240,
+                        612
+                    ],
+                    [
+                        1184,
+                        618
+                    ],
+                    [
+                        1187,
+                        671
+                    ],
+                    [
+                        1209,
+                        777
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091377,
+            "classId": 11382906,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:43:09.827Z",
+            "tags": [],
+            "classTitle": "22",
+            "points": {
+                "exterior": [
+                    [
+                        1175,
+                        836
+                    ],
+                    [
+                        1175,
+                        717
+                    ],
+                    [
+                        1183,
+                        622
+                    ],
+                    [
+                        1123,
+                        604
+                    ],
+                    [
+                        1110,
+                        697
+                    ],
+                    [
+                        1130,
+                        805
+                    ],
+                    [
+                        1138,
+                        841
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091364,
+            "classId": 11382907,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:43:05.120Z",
+            "tags": [],
+            "classTitle": "23",
+            "points": {
+                "exterior": [
+                    [
+                        1087,
+                        804
+                    ],
+                    [
+                        1089,
+                        751
+                    ],
+                    [
+                        1111,
+                        679
+                    ],
+                    [
+                        1111,
+                        607
+                    ],
+                    [
+                        1070,
+                        620
+                    ],
+                    [
+                        1061,
+                        675
+                    ],
+                    [
+                        1063,
+                        758
+                    ],
+                    [
+                        1063,
+                        784
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091378,
+            "classId": 11382908,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:42:55.725Z",
+            "tags": [],
+            "classTitle": "24",
+            "points": {
+                "exterior": [
+                    [
+                        1043,
+                        780
+                    ],
+                    [
+                        1059,
+                        688
+                    ],
+                    [
+                        1067,
+                        614
+                    ],
+                    [
+                        1006,
+                        616
+                    ],
+                    [
+                        1015,
+                        782
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091379,
+            "classId": 11382909,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:42:51.026Z",
+            "tags": [],
+            "classTitle": "25",
+            "points": {
+                "exterior": [
+                    [
+                        960,
+                        788
+                    ],
+                    [
+                        998,
+                        721
+                    ],
+                    [
+                        1019,
+                        646
+                    ],
+                    [
+                        1019,
+                        620
+                    ],
+                    [
+                        976,
+                        620
+                    ],
+                    [
+                        960,
+                        660
+                    ],
+                    [
+                        956,
+                        729
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091381,
+            "classId": 11382884,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:41:52.555Z",
+            "tags": [],
+            "classTitle": "26",
+            "points": {
+                "exterior": [
+                    [
+                        906,
+                        788
+                    ],
+                    [
+                        954,
+                        686
+                    ],
+                    [
+                        980,
+                        611
+                    ],
+                    [
+                        912,
+                        603
+                    ],
+                    [
+                        912,
+                        690
+                    ],
+                    [
+                        895,
+                        762
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091382,
+            "classId": 11382910,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:41:44.349Z",
+            "tags": [],
+            "classTitle": "27",
+            "points": {
+                "exterior": [
+                    [
+                        821,
+                        823
+                    ],
+                    [
+                        873,
+                        754
+                    ],
+                    [
+                        897,
+                        705
+                    ],
+                    [
+                        917,
+                        657
+                    ],
+                    [
+                        921,
+                        594
+                    ],
+                    [
+                        855,
+                        603
+                    ],
+                    [
+                        842,
+                        688
+                    ],
+                    [
+                        827,
+                        769
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091380,
+            "classId": 11382897,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:41:36.331Z",
+            "tags": [],
+            "classTitle": "28",
+            "points": {
+                "exterior": [
+                    [
+                        766,
+                        808
+                    ],
+                    [
+                        796,
+                        771
+                    ],
+                    [
+                        823,
+                        694
+                    ],
+                    [
+                        847,
+                        627
+                    ],
+                    [
+                        849,
+                        603
+                    ],
+                    [
+                        792,
+                        592
+                    ],
+                    [
+                        770,
+                        710
+                    ],
+                    [
+                        768,
+                        758
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091392,
+            "classId": 11382898,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:41:31.748Z",
+            "tags": [],
+            "classTitle": "29",
+            "points": {
+                "exterior": [
+                    [
+                        700,
+                        780
+                    ],
+                    [
+                        748,
+                        738
+                    ],
+                    [
+                        775,
+                        677
+                    ],
+                    [
+                        788,
+                        609
+                    ],
+                    [
+                        751,
+                        581
+                    ],
+                    [
+                        709,
+                        598
+                    ],
+                    [
+                        685,
+                        749
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091391,
+            "classId": 11382887,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:39:20.435Z",
+            "tags": [],
+            "classTitle": "2",
+            "points": {
+                "exterior": [
+                    [
+                        502,
+                        349
+                    ],
+                    [
+                        499,
+                        437
+                    ],
+                    [
+                        515,
+                        507
+                    ],
+                    [
+                        539,
+                        531
+                    ],
+                    [
+                        587,
+                        531
+                    ],
+                    [
+                        613,
+                        500
+                    ],
+                    [
+                        582,
+                        426
+                    ],
+                    [
+                        544,
+                        362
+                    ],
+                    [
+                        532,
+                        341
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091383,
+            "classId": 11382889,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "4",
+            "points": {
+                "exterior": [
+                    [
+                        659,
+                        340
+                    ],
+                    [
+                        657,
+                        434
+                    ],
+                    [
+                        657,
+                        493
+                    ],
+                    [
+                        639,
+                        548
+                    ],
+                    [
+                        668,
+                        561
+                    ],
+                    [
+                        727,
+                        552
+                    ],
+                    [
+                        731,
+                        513
+                    ],
+                    [
+                        711,
+                        448
+                    ],
+                    [
+                        702,
+                        382
+                    ],
+                    [
+                        689,
+                        349
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091390,
+            "classId": 11382891,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "6",
+            "points": {
+                "exterior": [
+                    [
+                        788,
+                        362
+                    ],
+                    [
+                        788,
+                        535
+                    ],
+                    [
+                        786,
+                        572
+                    ],
+                    [
+                        829,
+                        585
+                    ],
+                    [
+                        855,
+                        555
+                    ],
+                    [
+                        838,
+                        450
+                    ],
+                    [
+                        846,
+                        412
+                    ],
+                    [
+                        825,
+                        360
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091389,
+            "classId": 11382892,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "7",
+            "points": {
+                "exterior": [
+                    [
+                        825,
+                        375
+                    ],
+                    [
+                        847,
+                        533
+                    ],
+                    [
+                        847,
+                        572
+                    ],
+                    [
+                        877,
+                        587
+                    ],
+                    [
+                        906,
+                        590
+                    ],
+                    [
+                        899,
+                        522
+                    ],
+                    [
+                        895,
+                        437
+                    ],
+                    [
+                        880,
+                        406
+                    ],
+                    [
+                        873,
+                        382
+                    ],
+                    [
+                        845,
+                        351
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091388,
+            "classId": 11382893,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "8",
+            "points": {
+                "exterior": [
+                    [
+                        910,
+                        373
+                    ],
+                    [
+                        910,
+                        496
+                    ],
+                    [
+                        899,
+                        559
+                    ],
+                    [
+                        923,
+                        585
+                    ],
+                    [
+                        960,
+                        590
+                    ],
+                    [
+                        993,
+                        592
+                    ],
+                    [
+                        982,
+                        463
+                    ],
+                    [
+                        956,
+                        375
+                    ],
+                    [
+                        928,
+                        354
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091384,
+            "classId": 11382894,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:39:34.188Z",
+            "tags": [],
+            "classTitle": "9",
+            "points": {
+                "exterior": [
+                    [
+                        1000,
+                        397
+                    ],
+                    [
+                        989,
+                        555
+                    ],
+                    [
+                        989,
+                        585
+                    ],
+                    [
+                        1057,
+                        607
+                    ],
+                    [
+                        1072,
+                        576
+                    ],
+                    [
+                        1072,
+                        489
+                    ],
+                    [
+                        1063,
+                        428
+                    ],
+                    [
+                        1050,
+                        375
+                    ],
+                    [
+                        993,
+                        360
+                    ],
+                    [
+                        969,
+                        373
+                    ],
+                    [
+                        987,
+                        439
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091387,
+            "classId": 11382895,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "10",
+            "points": {
+                "exterior": [
+                    [
+                        1065,
+                        369
+                    ],
+                    [
+                        1052,
+                        598
+                    ],
+                    [
+                        1107,
+                        603
+                    ],
+                    [
+                        1146,
+                        598
+                    ],
+                    [
+                        1144,
+                        555
+                    ],
+                    [
+                        1137,
+                        513
+                    ],
+                    [
+                        1133,
+                        461
+                    ],
+                    [
+                        1129,
+                        421
+                    ],
+                    [
+                        1116,
+                        384
+                    ],
+                    [
+                        1111,
+                        358
+                    ],
+                    [
+                        1061,
+                        351
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091386,
+            "classId": 11382901,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-03-15T18:40:10.070Z",
+            "tags": [],
+            "classTitle": "11",
+            "points": {
+                "exterior": [
+                    [
+                        1144,
+                        371
+                    ],
+                    [
+                        1146,
+                        502
+                    ],
+                    [
+                        1148,
+                        572
+                    ],
+                    [
+                        1148,
+                        598
+                    ],
+                    [
+                        1188,
+                        609
+                    ],
+                    [
+                        1218,
+                        596
+                    ],
+                    [
+                        1210,
+                        539
+                    ],
+                    [
+                        1196,
+                        478
+                    ],
+                    [
+                        1196,
+                        399
+                    ],
+                    [
+                        1196,
+                        354
+                    ],
+                    [
+                        1161,
+                        354
+                    ]
+                ],
+                "interior": []
+            }
+        },
+        {
+            "id": 1166091385,
+            "classId": 11382902,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:50.785Z",
+            "updatedAt": "2023-01-24T09:04:50.785Z",
+            "tags": [],
+            "classTitle": "12",
+            "points": {
+                "exterior": [
+                    [
+                        1199,
+                        345
+                    ],
+                    [
+                        1186,
+                        476
+                    ],
+                    [
+                        1216,
+                        570
+                    ],
+                    [
+                        1240,
+                        598
+                    ],
+                    [
+                        1264,
+                        598
+                    ],
+                    [
+                        1290,
+                        572
+                    ],
+                    [
+                        1288,
+                        528
+                    ],
+                    [
+                        1262,
+                        476
+                    ],
+                    [
+                        1249,
+                        430
+                    ],
+                    [
+                        1249,
+                        386
+                    ],
+                    [
+                        1255,
+                        338
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ]
+}

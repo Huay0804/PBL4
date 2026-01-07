@@ -1,0 +1,62 @@
+{
+    "description": "",
+    "tags": [],
+    "size": {
+        "height": 1024,
+        "width": 2041
+    },
+    "objects": [
+        {
+            "id": 1166093168,
+            "classId": 11382884,
+            "description": "",
+            "geometryType": "polygon",
+            "labelerLogin": "GhazalehHITL",
+            "createdAt": "2023-01-24T09:04:51.636Z",
+            "updatedAt": "2023-01-24T09:04:51.636Z",
+            "tags": [],
+            "classTitle": "26",
+            "points": {
+                "exterior": [
+                    [
+                        923,
+                        842
+                    ],
+                    [
+                        910,
+                        808
+                    ],
+                    [
+                        898,
+                        771
+                    ],
+                    [
+                        880,
+                        721
+                    ],
+                    [
+                        881,
+                        682
+                    ],
+                    [
+                        917,
+                        685
+                    ],
+                    [
+                        935,
+                        716
+                    ],
+                    [
+                        943,
+                        763
+                    ],
+                    [
+                        949,
+                        826
+                    ]
+                ],
+                "interior": []
+            }
+        }
+    ]
+}

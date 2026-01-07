@@ -1,0 +1,1 @@
+123.png	class=1	fill=0.1077	compact=7.83	area=19004.0	bbox_area=176529.0
