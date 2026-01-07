@@ -1,0 +1,67 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing/coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checker/linter caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Data and papers
+data/
+archive/
+ref_papers/
+
+# Training outputs
+runs/
+outputs/
+checkpoints/
+wandb/
+
+# Model weights/artifacts
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.onnx
+*.tflite
+*.pb
+*.joblib
+*.pkl
+*.npy
+*.npz
+
+# Logs
+logs/
+*.log
