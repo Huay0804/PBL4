@@ -485,6 +485,7 @@ def make_dataset(
             ),
             num_parallel_calls=tf.data.AUTOTUNE,
         )
+    ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return ds
 
 

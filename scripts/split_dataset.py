@@ -21,14 +21,16 @@ class _SingleUseAction(argparse.Action):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Split dataset into train/val/test folders.")
+    parser = argparse.ArgumentParser(
+        description="Split dataset into a test set and K-fold CV splits."
+    )
     parser.add_argument("--images-dir", default="data/raw/img")
     parser.add_argument("--masks-dir", default="data/processed/masks_semantic")
     parser.add_argument("--class-map", default="data/processed/masks_semantic/class_map.txt")
     parser.add_argument("--output-dir", default="data/splits")
-    parser.add_argument("--train-ratio", type=float, default=0.7)
-    parser.add_argument("--val-ratio", type=float, default=0.15)
-    parser.add_argument("--test-ratio", type=float, default=0.15)
+    parser.add_argument("--test-ratio", type=float, default=0.2)
+    parser.add_argument("--test-count", type=int, default=None)
+    parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--mode", choices=["copy", "hardlink", "symlink"], default="copy")
     parser.add_argument("--include-background", action="store_true")
@@ -90,6 +92,13 @@ def list_pairs(images_dir, masks_dir):
     return pairs
 
 
+def sum_counts(items, num_classes):
+    total = np.zeros(num_classes, dtype=np.int64)
+    for item in items:
+        total += item["counts"]
+    return total
+
+
 def mask_counts(mask_path, num_classes, include_background, balance_mode):
     mask = np.array(Image.open(mask_path))
     if mask.ndim == 3:
@@ -102,15 +111,59 @@ def mask_counts(mask_path, num_classes, include_background, balance_mode):
     return counts
 
 
-def validate_ratios(train_ratio, val_ratio, test_ratio):
-    total = train_ratio + val_ratio + test_ratio
-    if total <= 0:
-        raise ValueError("Sum of ratios must be > 0.")
-    if abs(total - 1.0) > 1e-6:
-        train_ratio /= total
-        val_ratio /= total
-        test_ratio /= total
-    return train_ratio, val_ratio, test_ratio
+def normalize_ratio(value):
+    if value is None:
+        return None
+    if value < 0:
+        raise ValueError("Ratio must be >= 0.")
+    if value > 1:
+        raise ValueError("Ratio must be <= 1.")
+    return value
+
+
+def select_balanced_subset(samples, count):
+    if count <= 0:
+        return [], list(samples)
+    if count >= len(samples):
+        return list(samples), []
+
+    total_counts = sum_counts(samples, samples[0]["counts"].shape[0])
+    total_sum = float(total_counts.sum())
+    if total_sum > 0:
+        mask = total_counts > 0
+        target = total_counts[mask] / total_sum
+    else:
+        mask = None
+        target = None
+
+    selected = []
+    remaining = list(samples)
+    selected_counts = np.zeros_like(total_counts)
+
+    for _ in range(count):
+        best_idx = None
+        best_score = None
+        for idx, sample in enumerate(remaining):
+            new_counts = selected_counts + sample["counts"]
+            new_total = float(new_counts.sum()) + 1e-6
+            if total_sum > 0:
+                dist = new_counts[mask] / new_total
+                score = float(np.sum(np.abs(dist - target) * target))
+            else:
+                score = 0.0
+
+            if best_score is None or score < best_score - 1e-12:
+                best_score = score
+                best_idx = idx
+            elif abs(score - best_score) <= 1e-12:
+                if sample["image"].name < remaining[best_idx]["image"].name:
+                    best_idx = idx
+
+        chosen = remaining.pop(best_idx)
+        selected.append(chosen)
+        selected_counts += chosen["counts"]
+
+    return selected, remaining
 
 
 def assign_splits(samples, ratios, image_weight):
@@ -178,7 +231,7 @@ def copy_item(src, dst, mode):
         raise ValueError(f"Unknown mode {mode}")
 
 
-def summarize(split_counts, ratios, balance_mode):
+def summarize(split_counts, ratios, balance_mode, label_prefix=""):
     total_counts = np.zeros_like(next(iter(split_counts.values())))
     for counts in split_counts.values():
         total_counts += counts
@@ -195,8 +248,9 @@ def summarize(split_counts, ratios, balance_mode):
         diff = np.abs(share - ratios[name])
         score = float(np.sum(diff * weights))
         label = "pixels" if balance_mode == "pixels" else "presence"
+        prefix = f"{label_prefix} " if label_prefix else ""
         print(
-            f"{name}: {label}={int(counts.sum())} "
+            f"{prefix}{name}: {label}={int(counts.sum())} "
             f"dist_l1={score:.4f} "
             f"classes={dist.round(4).tolist()}"
         )
@@ -204,10 +258,9 @@ def summarize(split_counts, ratios, balance_mode):
 
 def main():
     args = parse_args()
-    train_ratio, val_ratio, test_ratio = validate_ratios(
-        args.train_ratio, args.val_ratio, args.test_ratio
-    )
-    ratios = {"train": train_ratio, "val": val_ratio, "test": test_ratio}
+    test_ratio = normalize_ratio(args.test_ratio)
+    if args.folds < 2:
+        raise ValueError("folds must be >= 2.")
 
     pairs = list_pairs(args.images_dir, args.masks_dir)
     if not pairs:
@@ -239,7 +292,34 @@ def main():
         key=lambda s: (-int(s["counts"].sum()), -int(np.count_nonzero(s["counts"])), s["image"].name)
     )
 
-    split_samples, split_counts = assign_splits(samples, ratios, args.image_balance_weight)
+    total_samples = len(samples)
+    if args.test_count is not None:
+        if args.test_count <= 0 or args.test_count >= total_samples:
+            raise ValueError("test-count must be between 1 and total_samples - 1.")
+        test_samples, train_samples = select_balanced_subset(samples, args.test_count)
+        split_counts = {
+            "test": sum_counts(test_samples, num_classes),
+            "train_pool": sum_counts(train_samples, num_classes),
+        }
+        split_ratios = {
+            "test": args.test_count / total_samples,
+            "train_pool": 1.0 - (args.test_count / total_samples),
+        }
+    else:
+        if test_ratio is None:
+            test_ratio = 0.2
+        if test_ratio <= 0 or test_ratio >= 1:
+            raise ValueError("test-ratio must be between 0 and 1.")
+
+        split_ratios = {"test": test_ratio, "train_pool": 1.0 - test_ratio}
+        split_samples, split_counts = assign_splits(
+            samples, split_ratios, args.image_balance_weight
+        )
+        test_samples = split_samples["test"]
+        train_samples = split_samples["train_pool"]
+
+    fold_ratios = {f"fold_{i}": 1.0 / args.folds for i in range(args.folds)}
+    fold_samples, fold_counts = assign_splits(train_samples, fold_ratios, args.image_balance_weight)
 
     output_dir = Path(args.output_dir)
     if output_dir.exists() and not args.dry_run:
@@ -247,9 +327,12 @@ def main():
         if resolved in (Path("/"), Path.home(), Path.cwd()):
             raise ValueError(f"Refusing to clear unsafe output dir: {resolved}")
         shutil.rmtree(output_dir)
-    for split_name, items in split_samples.items():
-        img_dir = output_dir / split_name / "img"
-        mask_dir = output_dir / split_name / MASKS_DIR_NAME
+    if not args.dry_run:
+        (output_dir / "folds").mkdir(parents=True, exist_ok=True)
+
+    def _write_samples(items, root_dir):
+        img_dir = root_dir / "img"
+        mask_dir = root_dir / MASKS_DIR_NAME
         if not args.dry_run:
             img_dir.mkdir(parents=True, exist_ok=True)
             mask_dir.mkdir(parents=True, exist_ok=True)
@@ -259,14 +342,31 @@ def main():
             copy_item(sample["image"], img_dir / sample["image"].name, args.mode)
             copy_item(sample["mask"], mask_dir / sample["mask"].name, args.mode)
 
+    _write_samples(test_samples, output_dir / "test")
+
+    fold_names = sorted(fold_samples.keys())
+    for fold_name in fold_names:
+        val_items = fold_samples[fold_name]
+        train_items = []
+        for other_name in fold_names:
+            if other_name != fold_name:
+                train_items.extend(fold_samples[other_name])
+
+        fold_root = output_dir / "folds" / fold_name
+        _write_samples(train_items, fold_root / "train")
+        _write_samples(val_items, fold_root / "val")
+
     class_map_path = Path(args.class_map)
     if class_map_path.exists() and not args.dry_run:
         shutil.copy2(class_map_path, output_dir / "class_map.txt")
 
-    print(f"Split summary (balance: {args.balance_mode}):")
-    for name, items in split_samples.items():
-        print(f"{name}: {len(items)} samples")
-    summarize(split_counts, ratios, args.balance_mode)
+    print(f"Split summary (balance: {args.balance_mode}, folds={args.folds}):")
+    print(f"test: {len(test_samples)} samples")
+    print(f"train_pool: {len(train_samples)} samples")
+    for fold_name in fold_names:
+        print(f"{fold_name} val: {len(fold_samples[fold_name])} samples")
+    summarize(split_counts, split_ratios, args.balance_mode, label_prefix="test/train_pool")
+    summarize(fold_counts, fold_ratios, args.balance_mode, label_prefix="folds")
 
 
 if __name__ == "__main__":

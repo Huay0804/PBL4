@@ -1,10 +1,8 @@
 """
-Adapter script for the Matterport Mask R-CNN repo.
-Requires the Mask_RCNN repo and its dependencies (scikit-image, scipy).
+Train or run the internal Mask R-CNN implementation for teeth detection.
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -81,20 +79,24 @@ def parse_args():
 
 def main():
     args = parse_args()
-    mask_rcnn_dir = os.environ.get("MASK_RCNN_DIR", "/home/huay/Mask_RCNN-master")
-    mask_rcnn_dir = Path(mask_rcnn_dir)
-    sys.path.insert(0, str(mask_rcnn_dir))
+    project_root = Path(__file__).resolve().parents[1]
+    src_dir = project_root / "src"
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
 
-    from mrcnn.config import Config
-    from mrcnn import model as modellib
-    from mrcnn import utils
+    from mask_rcnn.config import Config
+    from mask_rcnn import model as modellib
+    from mask_rcnn import utils
+
+    mapping = load_class_map(args.class_map)
+    num_classes = max(mapping) + 1 if mapping else 1
 
     class TeethConfig(Config):
         NAME = "teeth"
         IMAGES_PER_GPU = args.images_per_gpu
-        NUM_CLASSES = 1
+        NUM_CLASSES = num_classes
         STEPS_PER_EPOCH = 100
-        DETECTION_MIN_CONFIDENCE = 0.05
+        DETECTION_MIN_CONFIDENCE = args.min_score
 
     class TeethDataset(utils.Dataset):
         def load_teeth(self, splits_dir, subset, class_map_path):
@@ -150,11 +152,10 @@ def main():
         def image_reference(self, image_id):
             return self.image_info[image_id]["path"]
 
-    mapping = load_class_map(args.class_map)
-    num_classes = max(mapping) + 1 if mapping else 1
-
     config = TeethConfig()
-    config.NUM_CLASSES = num_classes
+
+    def _is_legacy_h5(path):
+        return str(path).endswith((".h5", ".hdf5")) and not str(path).endswith(".weights.h5")
 
     if args.command == "train":
         dataset_train = TeethDataset()
@@ -170,12 +171,19 @@ def main():
 
         model = modellib.MaskRCNN(mode="training", config=config, model_dir=args.logs)
         if args.weights.lower() == "coco":
-            weights_path = mask_rcnn_dir / "mask_rcnn_coco.h5"
+            weights_path = Path(args.logs) / "mask_rcnn_coco.h5"
+            if not weights_path.exists():
+                weights_path.parent.mkdir(parents=True, exist_ok=True)
+                utils.download_trained_weights(str(weights_path))
         elif args.weights.lower() == "imagenet":
             weights_path = model.get_imagenet_weights()
         else:
             weights_path = args.weights
-        model.load_weights(str(weights_path), by_name=True, exclude=["mrcnn_class_logits", "mrcnn_bbox_fc", "mrcnn_bbox", "mrcnn_mask"])
+        model.load_weights(
+            str(weights_path),
+            by_name=_is_legacy_h5(weights_path),
+            exclude=["mrcnn_class_logits", "mrcnn_bbox_fc", "mrcnn_bbox", "mrcnn_mask"],
+        )
 
         model.train(
             dataset_train,
@@ -201,7 +209,7 @@ def main():
     weights_path = args.weights
     if args.weights.lower() == "last":
         weights_path = model.find_last()
-    model.load_weights(str(weights_path), by_name=True)
+    model.load_weights(str(weights_path), by_name=_is_legacy_h5(weights_path))
 
     output_dir = Path(args.output_dir) if args.output_dir else Path(args.splits_dir) / args.subset / "bb_maps"
     output_dir.mkdir(parents=True, exist_ok=True)
