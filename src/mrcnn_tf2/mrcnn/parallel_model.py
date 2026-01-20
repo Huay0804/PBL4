@@ -14,8 +14,9 @@ https://github.com/fchollet/keras/blob/master/keras/utils/training_utils.py
 """
 
 import tensorflow as tf
-import keras.layers as KL
-import keras.models as KM
+import tensorflow.keras.backend as K
+import tensorflow.keras.layers as KL
+import tensorflow.keras.models as KM
 
 
 class ParallelModel(KM.Model):
@@ -25,17 +26,19 @@ class ParallelModel(KM.Model):
     merges the outputs together and applies the loss on the combined
     outputs.
     """
-
+        
     def __init__(self, keras_model, gpu_count):
         """Class constructor.
         keras_model: The Keras model to parallelize
         gpu_count: Number of GPUs. Must be > 1
         """
+        
         self.inner_model = keras_model
         self.gpu_count = gpu_count
         merged_outputs = self.make_parallel()
         super(ParallelModel, self).__init__(inputs=self.inner_model.inputs,
                                             outputs=merged_outputs)
+        
 
     def __getattribute__(self, attrname):
         """Redirect loading and saving methods to the inner model. That's where
@@ -56,17 +59,11 @@ class ParallelModel(KM.Model):
         """
         # Slice inputs. Slice inputs on the CPU to avoid sending a copy
         # of the full inputs to all GPUs. Saves on bandwidth and memory.
-        input_names = getattr(self.inner_model, "input_names", None)
-        if input_names is None:
-            input_names = [tensor.name.split(":")[0] for tensor in self.inner_model.inputs]
-        input_slices = {
-            name: tf.split(x, self.gpu_count)
-            for name, x in zip(input_names, self.inner_model.inputs)
-        }
+        input_slices = {name: tf.split(x, self.gpu_count)
+                        for name, x in zip(self.inner_model.input_names,
+                                           self.inner_model.inputs)}
 
-        output_names = getattr(self.inner_model, "output_names", None)
-        if output_names is None:
-            output_names = [tensor.name.split(":")[0] for tensor in self.inner_model.outputs]
+        output_names = self.inner_model.output_names
         outputs_all = []
         for i in range(len(self.inner_model.outputs)):
             outputs_all.append([])
@@ -76,7 +73,8 @@ class ParallelModel(KM.Model):
             with tf.device('/gpu:%d' % i):
                 with tf.name_scope('tower_%d' % i):
                     # Run a slice of inputs through this replica
-                    zipped_inputs = zip(input_names, self.inner_model.inputs)
+                    zipped_inputs = zip(self.inner_model.input_names,
+                                        self.inner_model.inputs)
                     inputs = [
                         KL.Lambda(lambda s: input_slices[name][i],
                                   output_shape=lambda s: (None,) + s[1:])(tensor)
@@ -98,7 +96,7 @@ class ParallelModel(KM.Model):
                 # across it. If they don't, then the output is likely a loss
                 # or a metric value that gets averaged across the batch.
                 # Keras expects losses and metrics to be scalars.
-                if outputs[0].shape == ():
+                if K.int_shape(outputs[0]) == ():
                     # Average
                     m = KL.Lambda(lambda o: tf.add_n(o) / len(outputs), name=name)(outputs)
                 else:
@@ -117,9 +115,10 @@ if __name__ == "__main__":
 
     import os
     import numpy as np
-    import keras.optimizers
-    from keras.datasets import mnist
-    from keras.preprocessing.image import ImageDataGenerator
+    import tensorflow.keras.optimizers
+    from tensorflow.keras.datasets import mnist
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    from tensorflow import keras
 
     GPU_COUNT = 2
 
@@ -133,7 +132,7 @@ if __name__ == "__main__":
         # Reset default graph. Keras leaves old ops in the graph,
         # which are ignored for execution but clutter graph
         # visualization in TensorBoard.
-        tf.compat.v1.reset_default_graph()
+        tf.reset_default_graph()
 
         inputs = KL.Input(shape=x_train.shape[1:], name="input_image")
         x = KL.Conv2D(32, (3, 3), activation='relu', padding="same",
@@ -162,7 +161,7 @@ if __name__ == "__main__":
     # Add multi-GPU support.
     model = ParallelModel(model, GPU_COUNT)
 
-    optimizer = keras.optimizers.SGD(learning_rate=0.01, momentum=0.9, clipnorm=5.0)
+    optimizer = keras.optimizers.SGD(lr=0.01, momentum=0.9, clipnorm=5.0)
 
     model.compile(loss='sparse_categorical_crossentropy',
                   optimizer=optimizer, metrics=['accuracy'])
@@ -170,7 +169,7 @@ if __name__ == "__main__":
     model.summary()
 
     # Train
-    model.fit(
+    model.fit_generator(
         datagen.flow(x_train, y_train, batch_size=64),
         steps_per_epoch=50, epochs=10, verbose=1,
         validation_data=(x_test, y_test),

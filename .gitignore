@@ -3,6 +3,7 @@
 venv/
 env/
 ENV/
+src/mrcnn_tf2/mrcnn-tf2-venv/
 
 # Python cache
 __pycache__/

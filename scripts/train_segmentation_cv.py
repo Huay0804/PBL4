@@ -1,47 +1,36 @@
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
+FOLDS_DIR = Path("data/splits/folds")
+FOLDS = 4
+OUTPUT_ROOT = Path("runs/cv")
+INCLUDE_BACKGROUND = False
+TRAIN_SCRIPT = Path("scripts/train.py")
+PYTHON = sys.executable
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run K-fold CV by invoking train.py per fold.")
-    parser.add_argument("--folds-dir", default="data/splits/folds")
-    parser.add_argument("--folds", type=int, default=4)
-    parser.add_argument("--class-map", default="data/splits/class_map.txt")
-    parser.add_argument("--output-root", default="runs/cv")
-    parser.add_argument("--include-background", action="store_true")
-    parser.add_argument("--train-script", default="scripts/train.py")
-    parser.add_argument("--python", default=sys.executable)
-    parser.add_argument("--dry-run", action="store_true")
-    args, unknown = parser.parse_known_args()
-    return args, unknown
+    parser.add_argument(
+        "--model",
+        default="unet",
+        choices=["unet", "mod_unet", "nestnet", "linknet", "fpn", "icpr_unet", "icpr_munet"],
+    )
+    parser.add_argument("--backbone", default="resnet18")
+    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--epochs", type=int, default=60)
+    parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument("--loss", choices=["ce_dice", "bce_dice", "dice"], default="ce_dice")
+    return parser.parse_args()
 
 
-def _drop_arg(unknown, name):
-    cleaned = []
-    skip = False
-    for idx, item in enumerate(unknown):
-        if skip:
-            skip = False
-            continue
-        if item == name:
-            skip = True
-            continue
-        if item.startswith(f"{name}="):
-            continue
-        cleaned.append(item)
-    return cleaned
-
-
-def _find_arg(unknown, name, default):
-    for idx, item in enumerate(unknown):
-        if item == name and idx + 1 < len(unknown):
-            return unknown[idx + 1]
-        if item.startswith(f"{name}="):
-            return item.split("=", 1)[1]
-    return default
+def _backbone_passed(argv):
+    return any(arg == "--backbone" or arg.startswith("--backbone=") for arg in argv)
 
 
 def _metrics_from_file(path, include_background):
@@ -97,46 +86,53 @@ def summarize_folds(fold_metrics):
 
 
 def main():
-    args, unknown = parse_args()
-    folds_dir = Path(args.folds_dir)
-    output_root = Path(args.output_root)
+    args = parse_args()
+    output_root = OUTPUT_ROOT
     output_root.mkdir(parents=True, exist_ok=True)
 
-    unknown = _drop_arg(unknown, "--splits-dir")
-    unknown = _drop_arg(unknown, "--output-dir")
-    unknown = _drop_arg(unknown, "--class-map")
-    unknown = [arg for arg in unknown if arg != "--"]
+    if args.model in ("icpr_unet", "icpr_munet") and _backbone_passed(sys.argv[1:]):
+        raise SystemExit("--backbone is not supported for icpr_unet/icpr_munet.")
 
-    model_name = _find_arg(unknown, "--model", "unet")
-    backbone = _find_arg(unknown, "--backbone", "resnet18")
-    run_name = f"{model_name}-{backbone}"
+    run_name = f"{args.model}-{args.backbone}"
 
     fold_metrics = []
 
-    for i in range(args.folds):
-        fold_dir = folds_dir / f"fold_{i}"
+    for i in range(FOLDS):
+        fold_dir = FOLDS_DIR / f"fold_{i}"
         if not fold_dir.exists():
             raise SystemExit(f"Missing fold directory: {fold_dir}")
 
         out_dir = output_root / f"fold_{i}"
         cmd = [
-            args.python,
-            args.train_script,
-            "--splits-dir",
-            str(fold_dir),
-            "--class-map",
-            args.class_map,
-            "--output-dir",
-            str(out_dir),
-        ] + unknown
+            PYTHON,
+            str(TRAIN_SCRIPT),
+            "--model",
+            args.model,
+        ]
+        if args.model not in ("icpr_unet", "icpr_munet"):
+            cmd += ["--backbone", args.backbone]
+        cmd += [
+            "--epochs",
+            str(args.epochs),
+            "--batch-size",
+            str(args.batch_size),
+            "--learning-rate",
+            str(args.learning_rate),
+            "--loss",
+            args.loss,
+        ]
+
+        env = os.environ.copy()
+        env["PBL4_SPLITS_DIR"] = str(fold_dir)
+        env["PBL4_BB_MAPS_DIR"] = str(fold_dir)
+        env["PBL4_OUTPUT_DIR"] = str(out_dir)
 
         print(f"Running fold {i}: {' '.join(cmd)}")
-        if not args.dry_run:
-            subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, env=env)
 
         per_class_path = out_dir / run_name / "per_class_metrics_val.json"
         if per_class_path.exists():
-            metrics = _metrics_from_file(per_class_path, args.include_background)
+            metrics = _metrics_from_file(per_class_path, INCLUDE_BACKGROUND)
             if metrics:
                 metrics["fold"] = i
                 fold_metrics.append(metrics)

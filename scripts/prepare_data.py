@@ -1,4 +1,3 @@
-import argparse
 import json
 import shutil
 import sys
@@ -7,8 +6,9 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-DEFAULT_SRC = Path("data/raw/archive/Teeth Segmentation PNG/d2")
-DEFAULT_DST = Path("data")
+SRC_ROOT = Path("data/raw/archive/Teeth Segmentation PNG/d2")
+DST_ROOT = Path("data")
+USE_MACHINE_MASKS = False
 RAW_DIR = "raw"
 PROCESSED_DIR = "processed"
 DIRS_TO_COPY = [
@@ -216,30 +216,8 @@ def convert_rgb_masks(rgb_dir: Path, out_dir: Path, mapping: dict[int, int]) -> 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Prepare dataset by copying base files and generating masks."
-    )
-    parser.add_argument(
-        "--src",
-        type=Path,
-        default=DEFAULT_SRC,
-        help="Source dataset directory",
-    )
-    parser.add_argument(
-        "--dst",
-        type=Path,
-        default=DEFAULT_DST,
-        help="Destination dataset directory",
-    )
-    parser.add_argument(
-        "--use-machine-masks",
-        action="store_true",
-        help="Convert provided masks_machine to ID masks after generation.",
-    )
-    args = parser.parse_args()
-
-    src_root = args.src
-    dst_root = args.dst
+    src_root = SRC_ROOT
+    dst_root = DST_ROOT
     raw_root = dst_root / RAW_DIR
     processed_root = dst_root / PROCESSED_DIR
 
@@ -258,7 +236,7 @@ def main() -> int:
         print(f"missing required directories: {', '.join(missing)}", file=sys.stderr)
         return 1
 
-    if args.use_machine_masks:
+    if USE_MACHINE_MASKS:
         if not copy_dir(src_root, raw_root, "masks_machine"):
             print("missing required directory: masks_machine", file=sys.stderr)
             return 1
@@ -270,7 +248,7 @@ def main() -> int:
     if result != 0:
         return result
 
-    if args.use_machine_masks:
+    if USE_MACHINE_MASKS:
         rgb_dir = raw_root / "masks_machine"
         mapping, ambiguous = derive_color_to_id_map(rgb_dir, out_dir)
         if not mapping:

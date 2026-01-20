@@ -1,11 +1,12 @@
-import argparse
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
 
-IMAGE_EXTS = (".png",)
+SPLITS_ROOT = Path("data/splits")
+CLASS_MAP = Path("data/splits/class_map.txt")
+SPLITS = ["train", "val", "test"]
 
 
 def infer_num_classes(class_map_path):
@@ -49,45 +50,44 @@ def build_bb_map(mask, num_classes):
     return bb_map
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Build BB-Conv maps from semantic masks.")
-    parser.add_argument("--splits-dir", default="data/splits")
-    parser.add_argument("--class-map", default="data/splits/class_map.txt")
-    parser.add_argument("--splits", nargs="+", default=["train", "val", "test"])
-    parser.add_argument("--output-dir", default=None)
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
-    splits_dir = Path(args.splits_dir)
-    output_root = Path(args.output_dir) if args.output_dir else splits_dir
+    roots = [SPLITS_ROOT]
+    folds_root = SPLITS_ROOT / "folds"
+    if folds_root.exists():
+        roots.extend(sorted(folds_root.glob("fold_*")))
 
-    mask_dirs = [splits_dir / split / "masks_semantic" for split in args.splits]
-    num_classes = infer_num_classes(args.class_map)
+    mask_dirs = []
+    for root in roots:
+        for split in SPLITS:
+            mask_dir = root / split / "masks_semantic"
+            if mask_dir.exists():
+                mask_dirs.append(mask_dir)
+
+    num_classes = infer_num_classes(CLASS_MAP)
     if num_classes is None:
         num_classes = scan_num_classes(mask_dirs)
     if num_classes is None:
         raise SystemExit("Unable to infer num_classes from class_map or masks.")
 
     total = 0
-    for split in args.splits:
-        masks_dir = splits_dir / split / "masks_semantic"
-        if not masks_dir.exists():
-            raise SystemExit(f"Missing masks directory: {masks_dir}")
-        out_dir = output_root / split / "bb_maps"
-        out_dir.mkdir(parents=True, exist_ok=True)
+    for root in roots:
+        for split in SPLITS:
+            masks_dir = root / split / "masks_semantic"
+            if not masks_dir.exists():
+                continue
+            out_dir = root / split / "bb_maps"
+            out_dir.mkdir(parents=True, exist_ok=True)
 
-        for mask_path in masks_dir.glob("*.png"):
-            mask = np.array(Image.open(mask_path))
-            if mask.ndim == 3:
-                mask = mask[..., 0]
-            bb_map = build_bb_map(mask, num_classes)
-            out_path = out_dir / f"{mask_path.stem}.npz"
-            np.savez_compressed(out_path, bb=bb_map)
-            total += 1
+            for mask_path in masks_dir.glob("*.png"):
+                mask = np.array(Image.open(mask_path))
+                if mask.ndim == 3:
+                    mask = mask[..., 0]
+                bb_map = build_bb_map(mask, num_classes)
+                out_path = out_dir / f"{mask_path.stem}.npz"
+                np.savez_compressed(out_path, bb=bb_map)
+                total += 1
 
-    print(f"Wrote {total} BB maps with {num_classes} channels to {output_root}.")
+    print(f"Wrote {total} BB maps with {num_classes} channels under {SPLITS_ROOT}.")
 
 
 if __name__ == "__main__":

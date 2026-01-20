@@ -19,7 +19,7 @@ if str(SRC_DIR) not in sys.path:
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from segmentation_models import Unet, ModifiedUnet, Nestnet, Linknet, FPN
+from segmentation_models import Unet, ModifiedUnet, Nestnet, Linknet, FPN, ICPRUnet, ICPRModifiedUnet
 from segmentation_models.backbones import get_preprocessing
 from helper_functions import (
     MeanIoUMetric,
@@ -47,23 +47,31 @@ PREPROCESSING_255_BACKBONES = {
     "inceptionresnetv2",
 }
 
+SPLITS_DIR = Path(os.environ.get("PBL4_SPLITS_DIR", "data/splits"))
+CLASS_MAP_PATH = Path("data/splits/class_map.txt")
+OUTPUT_DIR = Path(os.environ.get("PBL4_OUTPUT_DIR", "runs"))
+BB_MAPS_ROOT = Path(os.environ.get("PBL4_BB_MAPS_DIR", str(SPLITS_DIR)))
+SEED = 13
+CLASS_WEIGHTING = "none"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train segmentation models.")
-    parser.add_argument("--splits-dir", default="data/splits")
-    parser.add_argument("--class-map", default="data/splits/class_map.txt")
-    parser.add_argument("--model", default="unet", choices=["unet", "mod_unet", "nestnet", "linknet", "fpn"])
+    parser.add_argument(
+        "--model",
+        default="unet",
+        choices=["unet", "mod_unet", "nestnet", "linknet", "fpn", "icpr_unet", "icpr_munet"],
+    )
     parser.add_argument("--backbone", default="resnet18")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
-    parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--loss", choices=["ce_dice", "bce_dice", "dice"], default="ce_dice")
-    parser.add_argument("--class-weighting", choices=["none", "median"], default="none")
-    parser.add_argument("--bb-maps-dir", default=None)
-    parser.add_argument("--bb-channels", type=int, default=None)
-    parser.add_argument("--output-dir", default="runs")
     return parser.parse_args()
+
+
+def _backbone_passed(argv):
+    return any(arg == "--backbone" or arg.startswith("--backbone=") for arg in argv)
 
 
 def configure_tensorflow_memory():
@@ -537,15 +545,30 @@ def build_model(args, num_classes, input_shape, bb_channels):
             classes=classes,
             activation=activation,
         )
+    if args.model == "icpr_unet":
+        return ICPRUnet(
+            input_shape=input_shape,
+            classes=classes,
+            activation=activation,
+        )
+    if args.model == "icpr_munet":
+        return ICPRModifiedUnet(
+            input_shape=input_shape,
+            classes=classes,
+            activation=activation,
+            bb_channels=bb_channels,
+        )
     raise ValueError(f"Unknown model {args.model}")
 
 
 def main():
     args = parse_args()
     configure_tensorflow_memory()
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    tf.random.set_seed(args.seed)
+    if args.model in ("icpr_unet", "icpr_munet") and _backbone_passed(sys.argv[1:]):
+        raise SystemExit("--backbone is not supported for icpr_unet/icpr_munet.")
+    random.seed(SEED)
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
 
     height = DEFAULT_INPUT_HEIGHT
     width = DEFAULT_INPUT_WIDTH
@@ -553,19 +576,17 @@ def main():
     input_shape = (height, width, 3)
     size = (height, width)
 
-    num_classes = infer_num_classes(args.class_map) or 1
-    preprocess_fn = get_preprocessing(args.backbone)
-    scale_to_255 = args.backbone in PREPROCESSING_255_BACKBONES
-    bb_maps_root = Path(args.bb_maps_dir) if args.bb_maps_dir else None
-    if args.model == "mod_unet" and bb_maps_root is None:
-        raise SystemExit("Modified U-Net requires --bb-maps-dir.")
-    if args.model != "mod_unet" and bb_maps_root is not None:
-        raise SystemExit("--bb-maps-dir is only supported with --model mod_unet.")
-    bb_channels = args.bb_channels or num_classes
-    if args.model != "mod_unet":
-        bb_channels = None
+    num_classes = infer_num_classes(CLASS_MAP_PATH) or 1
+    use_backbone_preprocessing = args.model not in ("icpr_unet", "icpr_munet")
+    preprocess_fn = get_preprocessing(args.backbone) if use_backbone_preprocessing else None
+    scale_to_255 = use_backbone_preprocessing and args.backbone in PREPROCESSING_255_BACKBONES
+    needs_bb = args.model in ("mod_unet", "icpr_munet")
+    bb_maps_root = BB_MAPS_ROOT if needs_bb else None
+    if needs_bb and not bb_maps_root.exists():
+        raise SystemExit(f"BB maps directory not found: {bb_maps_root}")
+    bb_channels = num_classes if needs_bb else None
 
-    base = Path(args.splits_dir)
+    base = SPLITS_DIR
     train_pairs = list_pairs(
         base / "train" / "img",
         base / "train" / "masks_semantic",
@@ -587,7 +608,7 @@ def main():
         raise SystemExit("No validation image/mask pairs found.")
 
     class_weights = None
-    if num_classes > 1 and args.class_weighting != "none":
+    if num_classes > 1 and CLASS_WEIGHTING != "none":
         mask_paths = [pair[1] for pair in train_pairs]
         class_weights = compute_class_weights(mask_paths, num_classes)
         print(
@@ -644,7 +665,7 @@ def main():
     model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
 
     run_name = f"{args.model}-{args.backbone}"
-    out_dir = Path(args.output_dir) / run_name
+    out_dir = OUTPUT_DIR / run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     callbacks = [
@@ -673,7 +694,7 @@ def main():
     model.save(out_dir / "last.keras")
 
     if num_classes > 1:
-        class_names = load_class_map(args.class_map)
+        class_names = load_class_map(CLASS_MAP_PATH)
         class_names.setdefault(0, "background")
         val_confusion = compute_confusion_matrix(val_ds, model, num_classes)
         val_iou, val_dice, val_support = report_per_class_metrics(
