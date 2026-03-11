@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from project_presets import DEFAULT_SEGMENTATION_MODEL, get_segmentation_preset
+
 
 FOLDS_DIR = Path("data/splits/folds")
 FOLDS = 4
@@ -15,18 +17,38 @@ PYTHON = sys.executable
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run K-fold CV by invoking train.py per fold.")
+    parser = argparse.ArgumentParser(
+        description="Run K-fold CV using the project training presets."
+    )
     parser.add_argument(
         "--model",
-        default="unet",
+        default=DEFAULT_SEGMENTATION_MODEL,
         choices=["unet", "mod_unet", "nestnet", "linknet", "fpn", "icpr_unet", "icpr_munet"],
     )
-    parser.add_argument("--backbone", default="resnet18")
-    parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--epochs", type=int, default=60)
-    parser.add_argument("--learning-rate", type=float, default=1e-4)
-    parser.add_argument("--loss", choices=["ce_dice", "bce_dice", "dice"], default="ce_dice")
-    return parser.parse_args()
+    parser.add_argument("--backbone", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--batch-size", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--epochs", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--learning-rate", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--loss",
+        choices=["ce_dice", "bce_dice", "dice"],
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument("--fold", type=int, choices=range(FOLDS), help="Run a single fold (0-3).")
+    args = parser.parse_args()
+    preset = get_segmentation_preset(args.model)
+    if args.backbone is None:
+        args.backbone = preset["backbone"]
+    if args.batch_size is None:
+        args.batch_size = preset["batch_size"]
+    if args.epochs is None:
+        args.epochs = preset["epochs"]
+    if args.learning_rate is None:
+        args.learning_rate = preset["learning_rate"]
+    if args.loss is None:
+        args.loss = preset["loss"]
+    return args
 
 
 def _backbone_passed(argv):
@@ -97,7 +119,9 @@ def main():
 
     fold_metrics = []
 
-    for i in range(FOLDS):
+    folds_to_run = [args.fold] if args.fold is not None else range(FOLDS)
+
+    for i in folds_to_run:
         fold_dir = FOLDS_DIR / f"fold_{i}"
         if not fold_dir.exists():
             raise SystemExit(f"Missing fold directory: {fold_dir}")

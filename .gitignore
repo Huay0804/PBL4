@@ -34,6 +34,7 @@ dist/
 .idea/
 *.swp
 *~
+.~lock.*
 
 # OS junk
 .DS_Store
@@ -67,3 +68,7 @@ wandb/
 # Logs
 logs/
 *.log
+
+# Local reports and scratch output
+*.docx
+tmp/

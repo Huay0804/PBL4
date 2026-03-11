@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+import gc
 import keras
 import numpy as np
 
@@ -34,6 +35,7 @@ from helper_functions import (
     mean_iou,
     multiclass_dice_loss,
 )
+from project_presets import DEFAULT_SEGMENTATION_MODEL, get_segmentation_preset
 
 
 SPLITS_DIR = Path("data/splits")
@@ -44,17 +46,41 @@ INCLUDE_BACKGROUND = False
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Evaluate a saved segmentation model on the fixed test set."
+        description="Evaluate a saved segmentation model on the fixed test set using project presets."
     )
     parser.add_argument(
         "--model",
-        default="unet",
+        default=DEFAULT_SEGMENTATION_MODEL,
         choices=["unet", "mod_unet", "nestnet", "linknet", "fpn", "icpr_unet", "icpr_munet"],
     )
-    parser.add_argument("--backbone", default="resnet18")
-    parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--loss", choices=["ce_dice", "bce_dice", "dice"], default="ce_dice")
-    return parser.parse_args()
+    parser.add_argument("--backbone", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--batch-size", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--loss",
+        choices=["ce_dice", "bce_dice", "dice"],
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--run-dir",
+        type=Path,
+        help="Override model run directory (expects best.keras/last.keras inside).",
+    )
+    parser.add_argument(
+        "--cv-fold",
+        type=int,
+        choices=range(4),
+        help="Evaluate a CV fold run (runs/cv/fold_<n>/<model-backbone>/).",
+    )
+    args = parser.parse_args()
+    preset = get_segmentation_preset(args.model)
+    if args.backbone is None:
+        args.backbone = preset["backbone"]
+    if args.batch_size is None:
+        args.batch_size = preset["batch_size"]
+    if args.loss is None:
+        args.loss = preset["loss"]
+    return args
 
 
 def _backbone_passed(argv):
@@ -115,10 +141,17 @@ def _select_metrics(num_classes):
 
 def main():
     args = parse_args()
+    keras.backend.clear_session()
+    gc.collect()
     if args.model in ("icpr_unet", "icpr_munet") and _backbone_passed(sys.argv[1:]):
         raise SystemExit("--backbone is not supported for icpr_unet/icpr_munet.")
     run_name = f"{args.model}-{args.backbone}"
-    run_dir = RUNS_DIR / run_name
+    if args.run_dir:
+        run_dir = args.run_dir
+    elif args.cv_fold is not None:
+        run_dir = RUNS_DIR / "cv" / f"fold_{args.cv_fold}" / run_name
+    else:
+        run_dir = RUNS_DIR / run_name
     model_path = run_dir / "best.keras"
     if not model_path.exists():
         model_path = run_dir / "last.keras"
@@ -135,8 +168,9 @@ def main():
         )
 
     size = (DEFAULT_INPUT_HEIGHT, DEFAULT_INPUT_WIDTH)
-    preprocess_fn = get_preprocessing(args.backbone)
-    scale_to_255 = args.backbone in PREPROCESSING_255_BACKBONES
+    use_backbone_preprocessing = args.model not in ("icpr_unet", "icpr_munet")
+    preprocess_fn = get_preprocessing(args.backbone) if use_backbone_preprocessing else None
+    scale_to_255 = use_backbone_preprocessing and args.backbone in PREPROCESSING_255_BACKBONES
 
     bb_maps_dir = None
     if len(model.inputs) > 1:
@@ -173,8 +207,7 @@ def main():
     metrics = _select_metrics(num_classes)
     model.compile(optimizer=keras.optimizers.Adam(learning_rate=1e-4), loss=loss, metrics=metrics)
 
-    results = model.evaluate(test_ds, verbose=1)
-    report = dict(zip(model.metrics_names, results))
+    report = model.evaluate(test_ds, verbose=1, return_dict=True)
 
     out_dir = model_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -183,13 +216,34 @@ def main():
 
     class_names = load_class_map(CLASS_MAP_PATH)
     class_names.setdefault(0, "background")
-    confusion = compute_confusion_matrix(test_ds, model, num_classes)
+
+    # Free dataset memory before computing confusion matrix, then re-create
+    # a small-batch dataset to reduce peak memory usage.
+    del test_ds
+    keras.backend.clear_session()
+    gc.collect()
+
+    cm_ds = make_dataset(
+        test_pairs,
+        size=size,
+        num_classes=num_classes,
+        batch_size=1,
+        shuffle=False,
+        augment=False,
+        preprocess_fn=preprocess_fn,
+        scale_to_255=scale_to_255,
+        bb_channels=bb_channels if len(model.inputs) > 1 else None,
+    )
+    confusion = compute_confusion_matrix(cm_ds, model, num_classes)
     iou, dice, support = report_per_class_metrics("test", confusion, class_names, out_dir)
     report_group_metrics("test", iou, dice, support, out_dir, num_classes)
 
     summary = _summarize_overall(iou, dice, support, INCLUDE_BACKGROUND)
     (out_dir / "test_summary.json").write_text(json.dumps(summary, indent=2))
     print(f"Wrote test summary to {out_dir / 'test_summary.json'}")
+
+    keras.backend.clear_session()
+    gc.collect()
 
 
 if __name__ == "__main__":

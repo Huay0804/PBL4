@@ -8,9 +8,11 @@ import json
 import os
 import sys
 from pathlib import Path
+import shutil
 
 import numpy as np
 from PIL import Image
+from project_presets import get_mask_rcnn_preset
 
 IMAGE_EXTS = (".jpg", ".jpeg", ".png")
 
@@ -83,12 +85,63 @@ def build_bb_map_from_boxes(rois, class_ids, scores, height, width, num_classes,
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train Mask R-CNN on the teeth dataset.")
-    parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--learning-rate", type=float, default=0.001)
-    parser.add_argument("--fold", type=int, help="Train/eval a single fold index.")
-    return parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Train Mask R-CNN or export fold-specific BB maps using project presets."
+    )
+    parser.add_argument("--mode", choices=("train", "detect"), default=MODE)
+    parser.add_argument(
+        "--fold",
+        type=int,
+        help="Training fold index used in train mode.",
+    )
+    parser.add_argument(
+        "--source-fold",
+        type=int,
+        help="Fold index of the trained Mask R-CNN model used in detect mode.",
+    )
+    parser.add_argument(
+        "--target-fold",
+        type=int,
+        help="Fold index to run detection on and write bb_maps into.",
+    )
+    parser.add_argument("--epochs", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--batch-size", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--learning-rate", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--train-fold",
+        type=int,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--model-fold",
+        type=int,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--detect-fold",
+        type=int,
+        help=argparse.SUPPRESS,
+    )
+    args = parser.parse_args()
+    preset = get_mask_rcnn_preset()
+    if args.epochs is None:
+        args.epochs = preset["epochs"]
+    if args.batch_size is None:
+        args.batch_size = preset["batch_size"]
+    if args.learning_rate is None:
+        args.learning_rate = preset["learning_rate"]
+
+    if args.fold is not None and args.train_fold is not None and args.fold != args.train_fold:
+        raise SystemExit("Conflicting values passed for --fold and --train-fold.")
+    if args.source_fold is not None and args.model_fold is not None and args.source_fold != args.model_fold:
+        raise SystemExit("Conflicting values passed for --source-fold and --model-fold.")
+    if args.target_fold is not None and args.detect_fold is not None and args.target_fold != args.detect_fold:
+        raise SystemExit("Conflicting values passed for --target-fold and --detect-fold.")
+
+    args.train_fold = args.fold if args.fold is not None else args.train_fold
+    args.model_fold = args.source_fold if args.source_fold is not None else args.model_fold
+    args.detect_fold = args.target_fold if args.target_fold is not None else args.detect_fold
+    return args
 
 
 def main():
@@ -156,7 +209,7 @@ def main():
         IMAGES_PER_GPU = args.batch_size
         GPU_COUNT = 1
         NUM_CLASSES = num_classes
-        STEPS_PER_EPOCH = 100
+        STEPS_PER_EPOCH = 1000
         DETECTION_MIN_CONFIDENCE = DETECTION_MIN_CONFIDENCE
         LEARNING_RATE = args.learning_rate
         LEARNING_MOMENTUM = 0.9
@@ -165,13 +218,6 @@ def main():
         IMAGE_MIN_DIM = DEFAULT_IMAGE_MIN_DIM
         IMAGE_MAX_DIM = DEFAULT_IMAGE_MAX_DIM
         IMAGE_RESIZE_MODE = "none"
-        # Tighten training ROI/anchor counts for lower memory use.
-        RPN_TRAIN_ANCHORS_PER_IMAGE = 64
-        TRAIN_ROIS_PER_IMAGE = 64
-        POST_NMS_ROIS_TRAINING = 500
-        POST_NMS_ROIS_INFERENCE = 500
-        MAX_GT_INSTANCES = 32
-        DETECTION_MAX_INSTANCES = 32
         USE_MINI_MASK = False
 
     class TeethDataset(utils.Dataset):
@@ -291,6 +337,34 @@ def main():
         _load_weights(model)
 
         original_fit = model.keras_model.fit
+        best_path = Path(model.log_dir) / f"mask_rcnn_{config.NAME.lower()}_best.h5"
+        import tensorflow as tf
+
+        class BestOnlyCheckpoint(tf.keras.callbacks.Callback):
+            def __init__(self, checkpoint_path, best_path):
+                self.checkpoint_path = checkpoint_path
+                self.best_path = Path(best_path)
+                self.best_loss = None
+
+            def on_epoch_end(self, epoch, logs=None):
+                logs = logs or {}
+                val_loss = logs.get("val_loss")
+                epoch_path = Path(self.checkpoint_path.format(epoch=epoch + 1))
+                if not epoch_path.exists():
+                    return
+                if val_loss is None or self.best_loss is None or val_loss < self.best_loss:
+                    if val_loss is not None:
+                        self.best_loss = float(val_loss)
+                    try:
+                        shutil.copy2(epoch_path, self.best_path)
+                    except Exception:
+                        pass
+                try:
+                    epoch_path.unlink()
+                except Exception:
+                    pass
+
+        best_callback = BestOnlyCheckpoint(model.checkpoint_path, best_path)
 
         def _fit(*fit_args, **fit_kwargs):
             fit_kwargs["max_queue_size"] = min(
@@ -301,28 +375,19 @@ def main():
             return original_fit(*fit_args, **fit_kwargs)
 
         model.keras_model.fit = _fit
-        head_epochs = min(10, args.epochs)
         try:
-            print(f"Training heads for {head_epochs} epochs...")
+            print(f"Training all layers for {args.epochs} epochs...")
             model.train(
                 dataset_train,
                 dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=head_epochs,
-                layers="heads",
+                epochs=args.epochs,
+                layers="all",
+                custom_callbacks=[best_callback],
             )
-            if args.epochs > head_epochs:
-                print(f"Training all layers until epoch {args.epochs}...")
-                model.train(
-                    dataset_train,
-                    dataset_val,
-                    learning_rate=config.LEARNING_RATE,
-                    epochs=args.epochs,
-                    layers="all",
-                )
         finally:
             model.keras_model.fit = original_fit
-        return dataset_val
+        return dataset_val, Path(model.log_dir)
 
     def _compute_map(model, dataset):
         aps = []
@@ -349,7 +414,61 @@ def main():
             aps.append(ap)
         return float(np.mean(aps)) if aps else 0.0
 
-    def _make_inference_model(model_dir):
+    def _latest_run_dir(base_dir):
+        base_dir = Path(base_dir)
+        candidates = [
+            d for d in base_dir.iterdir()
+            if d.is_dir() and d.name.startswith(config.NAME.lower())
+        ]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda d: d.name)[-1]
+
+    def _best_checkpoint_from_events(run_dir):
+        try:
+            import tensorflow as tf  # noqa: F401
+            from tensorflow.python.summary.summary_iterator import summary_iterator
+        except Exception:
+            return None
+
+        run_dir = Path(run_dir)
+        event_files = sorted(run_dir.glob("events.out.tfevents.*"))
+        best_loss = None
+        best_epoch = None
+
+        for event_path in event_files:
+            try:
+                iterator = summary_iterator(str(event_path))
+            except Exception:
+                continue
+            for ev in iterator:
+                if not ev.summary:
+                    continue
+                for val in ev.summary.value:
+                    tag = val.tag or ""
+                    if "val_loss" not in tag:
+                        continue
+                    loss = float(val.simple_value)
+                    epoch = max(1, int(ev.step))
+                    if best_loss is None or loss < best_loss:
+                        best_loss = loss
+                        best_epoch = epoch
+
+        if best_epoch is None:
+            best_path = run_dir / f"mask_rcnn_{config.NAME.lower()}_best.h5"
+            return (best_path, None, None) if best_path.exists() else None
+
+        name = config.NAME
+        for epoch in (best_epoch, best_epoch + 1):
+            path = run_dir / f"mask_rcnn_{name}_{epoch:04d}.h5"
+            if path.exists():
+                return path, best_epoch, best_loss
+        best_path = run_dir / f"mask_rcnn_{config.NAME.lower()}_best.h5"
+        if best_path.exists():
+            return best_path, best_epoch, best_loss
+        return None
+
+    def _make_inference_model(model_dir, weights_path=None):
         class TeethInferenceConfig(TeethConfig):
             GPU_COUNT = 1
             IMAGES_PER_GPU = 1
@@ -358,34 +477,91 @@ def main():
         inference_config.NUM_CLASSES = num_classes
 
         model = modellib.MaskRCNN(mode="inference", config=inference_config, model_dir=model_dir)
-        weights_path = model.find_last()
-        if not weights_path:
-            raise SystemExit(f"Missing trained weights in {model_dir}")
+        if weights_path is None:
+            weights_path = model.find_last()
+            if not weights_path:
+                raise SystemExit(f"Missing trained weights in {model_dir}")
+        else:
+            weights_path = Path(weights_path)
+            if not weights_path.exists():
+                raise SystemExit(f"Missing trained weights file: {weights_path}")
         model.load_weights(str(weights_path), by_name=_is_legacy_h5(weights_path))
         return model
 
-    if MODE == "train":
+    def _write_mask_rcnn_cv_summary(folds_root):
+        per_fold = []
+        for fold_path in sorted(LOGS_DIR.glob("cv_summary_fold_*.json")):
+            try:
+                payload = json.loads(fold_path.read_text())
+                fold_idx = int(payload["fold"])
+                map_score = float(payload["mAP@0.5"])
+            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                continue
+            per_fold.append({"fold": fold_idx, "mAP@0.5": map_score})
+
+        # Keep only one entry per fold index and sort by fold.
+        unique = {}
+        for row in per_fold:
+            unique[row["fold"]] = row
+        rows = [unique[idx] for idx in sorted(unique.keys())]
+
+        expected_folds = sorted(
+            int(path.name.split("_")[1]) for path in folds_root.glob("fold_*") if path.is_dir()
+        )
+        completed_folds = [row["fold"] for row in rows]
+        missing_folds = [idx for idx in expected_folds if idx not in set(completed_folds)]
+
+        map_scores = [row["mAP@0.5"] for row in rows]
+        aggregate = {
+            "num_completed_folds": len(rows),
+            "mean_mAP@0.5": float(np.mean(map_scores)) if map_scores else None,
+            "std_mAP@0.5": float(np.std(map_scores)) if len(map_scores) > 1 else 0.0,
+            "expected_folds": expected_folds,
+            "missing_folds": missing_folds,
+            "is_complete": len(missing_folds) == 0,
+        }
+
+        summary = {"folds": rows, "aggregate": aggregate}
+        summary_path = LOGS_DIR / "cv_summary.json"
+        summary_path.write_text(json.dumps(summary, indent=2))
+        return summary_path
+
+    if args.mode == "train":
         folds_root = SPLITS_DIR / "folds"
         if not folds_root.exists():
             raise SystemExit(f"Missing folds directory: {folds_root}")
-        if args.fold is None:
-            raise SystemExit("For MODE='train', pass --fold <index> to run a single fold.")
-        fold_dir = folds_root / f"fold_{args.fold}"
+        if args.train_fold is None:
+            raise SystemExit(
+                "For MODE='train', pass --fold <index> to run a single fold."
+            )
+        fold_dir = folds_root / f"fold_{args.train_fold}"
         if not fold_dir.exists():
             raise SystemExit(f"Missing fold directory: {fold_dir}")
-        fold_log_dir = LOGS_DIR / f"fold_{args.fold}"
-        print(f"Training fold {args.fold} in {fold_dir}...")
+        fold_log_dir = LOGS_DIR / f"fold_{args.train_fold}"
+        print(f"Training fold {args.train_fold} in {fold_dir}...")
         dataset_val = None
         inference_model = None
         try:
-            dataset_val = _train_on_split(fold_dir, fold_log_dir)
-            inference_model = _make_inference_model(fold_log_dir)
+            dataset_val, run_dir = _train_on_split(fold_dir, fold_log_dir)
+            best_info = _best_checkpoint_from_events(run_dir)
+            if best_info is None:
+                best_info = _best_checkpoint_from_events(_latest_run_dir(fold_log_dir) or run_dir)
+            best_weights = None
+            if best_info is not None:
+                best_weights, best_epoch, best_loss = best_info
+                print(
+                    f"Using best checkpoint for mAP: {best_weights.name} "
+                    f"(epoch {best_epoch}, val_loss={best_loss:.6f})"
+                )
+            inference_model = _make_inference_model(fold_log_dir, weights_path=best_weights)
             map_score = _compute_map(inference_model, dataset_val)
-            summary = {"fold": args.fold, "mAP@0.5": map_score}
-            summary_path = LOGS_DIR / f"cv_summary_fold_{args.fold}.json"
+            summary = {"fold": args.train_fold, "mAP@0.5": map_score}
+            summary_path = LOGS_DIR / f"cv_summary_fold_{args.train_fold}.json"
             summary_path.write_text(json.dumps(summary, indent=2))
-            print(f"Fold {args.fold} mAP@0.5: {map_score:.4f}")
+            print(f"Fold {args.train_fold} mAP@0.5: {map_score:.4f}")
             print(f"Wrote fold summary to {summary_path}")
+            cv_summary_path = _write_mask_rcnn_cv_summary(folds_root)
+            print(f"Updated CV summary at {cv_summary_path}")
         finally:
             del dataset_val
             del inference_model
@@ -399,13 +575,20 @@ def main():
     inference_config = TeethInferenceConfig()
     inference_config.NUM_CLASSES = num_classes
 
-    dataset = TeethDataset()
-    dataset.load_teeth(SPLITS_DIR, DETECT_SUBSET, CLASS_MAP_PATH)
-    dataset.prepare()
+    detect_splits_root = SPLITS_DIR
+    detect_subsets = [DETECT_SUBSET]
+    if args.detect_fold is not None:
+        folds_root = SPLITS_DIR / "folds"
+        if not folds_root.exists():
+            raise SystemExit(f"Missing folds directory: {folds_root}")
+        detect_splits_root = folds_root / f"fold_{args.detect_fold}"
+        if not detect_splits_root.exists():
+            raise SystemExit(f"Missing fold directory: {detect_splits_root}")
+        detect_subsets = [TRAIN_SUBSET, VAL_SUBSET]
 
     detect_logs_dir = LOGS_DIR
-    if args.fold is not None:
-        detect_logs_dir = LOGS_DIR / f"fold_{args.fold}"
+    if args.model_fold is not None:
+        detect_logs_dir = LOGS_DIR / f"fold_{args.model_fold}"
     else:
         direct_runs = [
             d for d in LOGS_DIR.iterdir()
@@ -436,26 +619,31 @@ def main():
             raise SystemExit(f"Missing weights file: {weights_path}")
     model.load_weights(str(weights_path), by_name=_is_legacy_h5(weights_path))
 
-    output_dir = SPLITS_DIR / DETECT_SUBSET / "bb_maps"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    for subset in detect_subsets:
+        dataset = TeethDataset()
+        dataset.load_teeth(detect_splits_root, subset, CLASS_MAP_PATH)
+        dataset.prepare()
 
-    for image_id in dataset.image_ids:
-        image = dataset.load_image(image_id)
-        results = model.detect([image], verbose=0)[0]
-        bb_map = build_bb_map_from_boxes(
-            results["rois"],
-            results["class_ids"],
-            results["scores"],
-            image.shape[0],
-            image.shape[1],
-            num_classes,
-            DETECTION_MIN_CONFIDENCE,
-        )
-        out_path = output_dir / f"{dataset.image_info[image_id]['id']}.npz"
-        np.savez_compressed(out_path, bb=bb_map)
+        output_dir = detect_splits_root / subset / "bb_maps"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        for image_id in dataset.image_ids:
+            image = dataset.load_image(image_id)
+            results = model.detect([image], verbose=0)[0]
+            bb_map = build_bb_map_from_boxes(
+                results["rois"],
+                results["class_ids"],
+                results["scores"],
+                image.shape[0],
+                image.shape[1],
+                num_classes,
+                DETECTION_MIN_CONFIDENCE,
+            )
+            out_path = output_dir / f"{dataset.image_info[image_id]['id']}.npz"
+            np.savez_compressed(out_path, bb=bb_map)
 
     _clear_tf_memory()
-    print(f"Saved BB maps to {output_dir}.")
+    print(f"Saved BB maps under {detect_splits_root}.")
 
 
 if __name__ == "__main__":
