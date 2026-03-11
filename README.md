@@ -31,6 +31,32 @@ Two Python environments are used:
 - `venv/` for segmentation training, evaluation, summaries, and figures
 - `src/mrcnn_tf2/mrcnn-tf2-venv/` for Mask R-CNN training and detection
 
+### Segmentation venv setup
+
+Create the main project virtual environment for segmentation with Python 3.12:
+
+```bash
+python3.12 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Quick check:
+
+```bash
+source venv/bin/activate
+python -c "import tensorflow as tf; import keras; print(tf.__version__, keras.__version__)"
+```
+
+Use this environment for:
+
+- `scripts/train_segmentation_cv.py`
+- `scripts/train.py`
+- `scripts/evaluate_final.py`
+- `scripts/summarize_icpr_metrics.py`
+- `scripts/make_icpr_figures.py`
+
 ## Repository Layout
 
 - `scripts/train_mask_rcnn.py`: Mask R-CNN train/detect entrypoint
