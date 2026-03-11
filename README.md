@@ -31,6 +31,15 @@ Two Python environments are used:
 - `venv/` for segmentation training, evaluation, summaries, and figures
 - `src/mrcnn_tf2/mrcnn-tf2-venv/` for Mask R-CNN training and detection
 
+### Tested OS
+
+The current local setup used for this project is:
+
+- Ubuntu 24.04.3 LTS
+- Linux kernel `6.17.0-14-generic`
+- `x86_64` architecture
+- Python `3.12` for the segmentation `venv`
+
 ### Segmentation venv setup
 
 Create the main project virtual environment for segmentation with Python 3.12:
@@ -56,6 +65,27 @@ Use this environment for:
 - `scripts/evaluate_final.py`
 - `scripts/summarize_icpr_metrics.py`
 - `scripts/make_icpr_figures.py`
+
+### Current segmentation package versions
+
+The checked `venv` currently matches `requirements.txt` on the following pins:
+
+- `tensorflow==2.20.0`
+- `keras==3.13.0`
+- `numpy==2.0.2`
+- `scipy==1.15.1`
+- `scikit-image==0.25.2`
+- `pillow==12.1.0`
+- `h5py==3.12.1`
+- `imgaug==0.4.0`
+
+### Compatibility note
+
+Although the package versions in `requirements.txt` currently match the local
+segmentation `venv`, `imgaug==0.4.0` is not compatible with `numpy==2.0.2`
+when imported directly because `imgaug` still relies on `np.sctypes`, which was
+removed in NumPy 2.0. If you rebuild the environment from scratch and hit this
+issue, pinning NumPy below 2.0 is the safer option.
 
 ## Repository Layout
 
