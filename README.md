@@ -10,6 +10,20 @@ dental X-ray images:
 The model architecture and overall pipeline follow the reference ICPR paper.
 The code in this repository is the project implementation of that pipeline.
 
+## Credits and References
+
+- Reference pipeline paper:
+  [Automatic tooth segmentation on panoramic X-rays using deep neural networks (ICPR 2022)](https://www.polytech.univ-nantes.fr/autrusseau-f/Papers/ICPR2022_Odon.pdf)
+- TF2 Mask R-CNN code source used in this project:
+  [z-mahmud22/Mask-RCNN_TF2.14.0](https://github.com/z-mahmud22/Mask-RCNN_TF2.14.0)
+- Original Mask R-CNN implementation that the TF2 port is based on:
+  [matterport/Mask_RCNN](https://github.com/matterport/Mask_RCNN)
+
+The vendored `src/mrcnn_tf2/` code in this repository is credited to the
+TensorFlow 2 port above and to the original Matterport `Mask_RCNN` project,
+whose source headers and license notices are still preserved locally under the
+MIT license.
+
 ## Environments
 
 Two Python environments are used:
