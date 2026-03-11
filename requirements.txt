@@ -5,4 +5,3 @@ scipy==1.15.1
 scikit-image==0.25.2
 pillow==12.1.0
 h5py==3.12.1
-imgaug==0.4.0

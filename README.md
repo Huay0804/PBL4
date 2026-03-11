@@ -68,7 +68,7 @@ Use this environment for:
 
 ### Current segmentation package versions
 
-The checked `venv` currently matches `requirements.txt` on the following pins:
+The required segmentation environment is pinned to:
 
 - `tensorflow==2.20.0`
 - `keras==3.13.0`
@@ -77,15 +77,18 @@ The checked `venv` currently matches `requirements.txt` on the following pins:
 - `scikit-image==0.25.2`
 - `pillow==12.1.0`
 - `h5py==3.12.1`
-- `imgaug==0.4.0`
 
-### Compatibility note
+### Optional augmentation dependency
 
-Although the package versions in `requirements.txt` currently match the local
-segmentation `venv`, `imgaug==0.4.0` is not compatible with `numpy==2.0.2`
-when imported directly because `imgaug` still relies on `np.sctypes`, which was
-removed in NumPy 2.0. If you rebuild the environment from scratch and hit this
-issue, pinning NumPy below 2.0 is the safer option.
+`imgaug` has been removed from the tracked requirements because the current
+ICPR workflow in this repository does not enable the optional augmentation path
+that depends on it. This applies to both:
+
+- the segmentation environment in `venv/`
+- the vendored TF2 Mask R-CNN environment in `src/mrcnn_tf2/mrcnn-tf2-venv/`
+
+If augmentation based on the upstream Mask R-CNN hooks is needed later,
+`imgaug` can still be installed manually as an extra dependency.
 
 ## Repository Layout
 
