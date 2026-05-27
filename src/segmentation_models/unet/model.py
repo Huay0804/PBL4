@@ -1,5 +1,3 @@
-from keras.layers import Input
-
 from .builder import build_unet
 from ..utils import freeze_model
 from ..backbones import get_backbone
@@ -87,60 +85,4 @@ def Unet(
         freeze_model(backbone)
 
     model.name = "u-{}".format(backbone_name)
-    return model
-
-
-def ModifiedUnet(
-    backbone_name="vgg16",
-    input_shape=(None, None, 3),
-    input_tensor=None,
-    encoder_weights="imagenet",
-    freeze_encoder=False,
-    skip_connections="default",
-    decoder_block_type="upsampling",
-    decoder_filters=(256, 128, 64, 32, 16),
-    decoder_use_batchnorm=True,
-    n_upsample_blocks=5,
-    upsample_rates=(2, 2, 2, 2, 2),
-    classes=1,
-    activation="sigmoid",
-    bb_channels=None,
-    bb_use_batchnorm=True,
-):
-    """
-    Modified U-Net with BB-Conv gated skip connections.
-    """
-    backbone = get_backbone(
-        backbone_name,
-        input_shape=input_shape,
-        input_tensor=input_tensor,
-        weights=encoder_weights,
-        include_top=False,
-    )
-
-    if skip_connections == "default":
-        skip_connections = DEFAULT_SKIP_CONNECTIONS[backbone_name]
-
-    bb_channels = bb_channels or classes
-    bb_input_shape = input_shape[:2] + (bb_channels,)
-    bb_input = Input(shape=bb_input_shape, name="bb_input")
-
-    model = build_unet(
-        backbone,
-        classes,
-        skip_connections,
-        decoder_filters=decoder_filters,
-        block_type=decoder_block_type,
-        activation=activation,
-        n_upsample_blocks=n_upsample_blocks,
-        upsample_rates=upsample_rates,
-        use_batchnorm=decoder_use_batchnorm,
-        bb_input=bb_input,
-        bb_use_batchnorm=bb_use_batchnorm,
-    )
-
-    if freeze_encoder:
-        freeze_model(backbone)
-
-    model.name = "modu-{}".format(backbone_name)
     return model

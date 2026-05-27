@@ -1,1 +1,1 @@
-from .model import Nestnet
+from .model import Nestnet, ModifiedNestnet

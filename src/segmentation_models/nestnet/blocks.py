@@ -7,11 +7,11 @@ from keras.layers import Concatenate
 
 
 def handle_block_names(stage, cols):
-    conv_name = "decoder_stage{}-{}_conv".format(stage, cols)
-    bn_name = "decoder_stage{}-{}_bn".format(stage, cols)
-    relu_name = "decoder_stage{}-{}_relu".format(stage, cols)
-    up_name = "decoder_stage{}-{}_upsample".format(stage, cols)
-    merge_name = "merge_{}-{}".format(stage, cols)
+    conv_name = f"decoder_stage{stage}-{cols}_conv"
+    bn_name = f"decoder_stage{stage}-{cols}_bn"
+    relu_name = f"decoder_stage{stage}-{cols}_relu"
+    up_name = f"decoder_stage{stage}-{cols}_upsample"
+    merge_name = f"merge_{stage}-{cols}"
     return conv_name, bn_name, relu_name, up_name, merge_name
 
 
@@ -26,14 +26,23 @@ def ConvRelu(filters, kernel_size, use_batchnorm=False, conv_name="conv", bn_nam
     return layer
 
 
+def _as_skip_list(skip):
+    if skip is None:
+        return []
+    if isinstance(skip, (list, tuple)):
+        return [tensor for tensor in skip if tensor is not None]
+    return [skip]
+
+
 def Upsample2D_block(filters, stage, cols, kernel_size=(3, 3), upsample_rate=(2, 2), use_batchnorm=False, skip=None):
     def layer(input_tensor):
         conv_name, bn_name, relu_name, up_name, merge_name = handle_block_names(stage, cols)
 
         x = UpSampling2D(size=upsample_rate, name=up_name)(input_tensor)
 
-        if skip is not None:
-            x = Concatenate(name=merge_name)([x, skip])
+        skip_tensors = _as_skip_list(skip)
+        if skip_tensors:
+            x = Concatenate(name=merge_name)([x] + skip_tensors)
 
         x = ConvRelu(
             filters,
@@ -83,8 +92,9 @@ def Transpose2D_block(
             x = BatchNormalization(name=bn_name + "1")(x)
         x = Activation("relu", name=relu_name + "1")(x)
 
-        if skip is not None:
-            x = Concatenate(name=merge_name)([x, skip])
+        skip_tensors = _as_skip_list(skip)
+        if skip_tensors:
+            x = Concatenate(name=merge_name)([x] + skip_tensors)
 
         x = ConvRelu(
             filters,
