@@ -34,8 +34,10 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-# Pure-Python reporting helpers (no TF call path is exercised here).
-from train import (
+# Pure-numpy reporting helpers — deliberately NOT imported from train.py, which
+# would drag in TensorFlow + segmentation_models. This keeps YOLO evaluation
+# runnable on a torch-only Ultralytics environment (e.g. the Kaggle notebook).
+from segmentation_report import (
     DEFAULT_INPUT_HEIGHT,
     DEFAULT_INPUT_WIDTH,
     load_class_map,

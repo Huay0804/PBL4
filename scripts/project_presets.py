@@ -77,6 +77,12 @@ YOLO_SEG_MODELS = {
     "yolo26": {
         "weights_template": "yolo26{size}-seg.pt",
         "run_name": "yolo26_seg",
+        # YOLO26's NMS-free end-to-end head keeps extra training-time assignment
+        # tensors (dual one-to-one + one-to-many), so it OOMs at YOLO11's batch
+        # on a 16 GB T4/P100. Use Ultralytics auto-batch (-1): it probes the GPU
+        # and picks ~60% utilization. train_yolo_seg_cv.py reports the size it
+        # actually chose.
+        "batch": -1,
     },
 }
 
@@ -122,10 +128,12 @@ def resolve_yolo_seg_model(model_name, size=None):
             "alias": model_name,
             "weights": spec["weights_template"].format(size=size),
             "run_name": spec["run_name"],
+            # Per-model batch override; None falls back to YOLO_SEG_PRESET["batch"].
+            "batch": spec.get("batch"),
         }
     # Raw weights string / checkpoint path passthrough.
     stem = model_name.replace(".pt", "").replace("/", "_")
-    return {"alias": model_name, "weights": model_name, "run_name": stem}
+    return {"alias": model_name, "weights": model_name, "run_name": stem, "batch": None}
 
 
 def get_mask_rcnn_preset():

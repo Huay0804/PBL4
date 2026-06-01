@@ -78,15 +78,19 @@ def train_fold(fold_index, model_spec, preset, args):
     run_name = model_spec["run_name"]
 
     epochs = args.epochs or preset["epochs"]
-    batch = args.batch or preset["batch"]
+    # Batch precedence: explicit --batch > per-model override > preset default.
+    # -1 means Ultralytics auto-batch (probe GPU, pick ~60% utilization).
+    requested_batch = args.batch or model_spec.get("batch") or preset["batch"]
+    auto_batch = requested_batch == -1
     imgsz = args.imgsz or preset["imgsz"]
 
-    print(f"\n===== TRAIN fold {fold_index} | {model_spec['weights']} =====", flush=True)
+    print(f"\n===== TRAIN fold {fold_index} | {model_spec['weights']} | "
+          f"batch={'auto (-1)' if auto_batch else requested_batch} =====", flush=True)
     model = YOLO(model_spec["weights"])
     model.train(
         data=str(data_yaml),
         epochs=epochs,
-        batch=batch,
+        batch=requested_batch,
         imgsz=imgsz,
         rect=preset["rect"],
         lr0=preset["learning_rate"],
@@ -98,6 +102,16 @@ def train_fold(fold_index, model_spec, preset, args):
         seed=13,
     )
 
+    # After auto-batch, the trainer holds the size it actually chose. The
+    # attribute name has shifted across Ultralytics versions, so probe both.
+    trainer = getattr(model, "trainer", None)
+    resolved_batch = getattr(trainer, "batch_size", None)
+    if resolved_batch in (None, -1) and trainer is not None:
+        resolved_batch = getattr(getattr(trainer, "args", None), "batch", None)
+    if resolved_batch in (None, -1):
+        resolved_batch = requested_batch
+    resolved_batch = int(resolved_batch)
+
     best = project_dir / run_name / "weights" / "best.pt"
     write_json(
         project_dir / run_name / "fold_train_meta.json",
@@ -108,13 +122,18 @@ def train_fold(fold_index, model_spec, preset, args):
             "best_checkpoint": str(best),
             "data_yaml": str(data_yaml),
             "epochs": epochs,
-            "batch": batch,
+            "batch_requested": requested_batch,
+            "batch_resolved": resolved_batch,
+            "auto_batch": auto_batch,
             "imgsz": imgsz,
             "rect": preset["rect"],
         },
     )
-    print(f"fold {fold_index} done -> {best}")
-    return best
+    if auto_batch:
+        print(f"fold {fold_index} done -> {best}  (auto-batch chose {resolved_batch})")
+    else:
+        print(f"fold {fold_index} done -> {best}  (batch {resolved_batch})")
+    return resolved_batch
 
 
 def main():
@@ -125,9 +144,14 @@ def main():
         _ensure_dataset()
 
     folds = [args.fold] if args.fold is not None else list(range(FOLDS))
+    resolved = {}
     for fold_index in folds:
-        train_fold(fold_index, model_spec, preset, args)
+        resolved[fold_index] = train_fold(fold_index, model_spec, preset, args)
+
     print("\nAll requested folds trained.")
+    print(f"Batch size used per fold ({model_spec['alias']}):")
+    for fold_index in folds:
+        print(f"  fold {fold_index}: {resolved[fold_index]}")
 
 
 if __name__ == "__main__":
