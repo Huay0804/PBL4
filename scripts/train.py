@@ -181,6 +181,16 @@ def parse_args():
         default=None,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--keep-training-backup",
+        action="store_true",
+        default=_env_bool("PBL4_KEEP_TRAINING_BACKUP") or False,
+        help=(
+            "Keep the .training_backup/ crash-resume weights after a fold "
+            "completes. Off by default: the backup is a full-size duplicate of "
+            "the model that is only needed to resume between process restarts."
+        ),
+    )
     args = parser.parse_args()
     preset = get_segmentation_preset(args.model)
     if args.batch_size is None:
@@ -1286,7 +1296,11 @@ def main():
             keras.callbacks.BackupAndRestore(
                 backup_dir=str(backup_dir),
                 save_freq="epoch",
-                delete_checkpoint=False,
+                # Delete the backup once the fold finishes normally. Intermediate
+                # process refreshes raise ProcessRefreshRequested out of fit() so
+                # on_train_end never fires and the backup survives for resume;
+                # only genuine completion (final epoch) triggers deletion.
+                delete_checkpoint=not args.keep_training_backup,
             )
         )
         callbacks.append(
@@ -1312,6 +1326,11 @@ def main():
         sys.exit(PROCESS_REFRESH_EXIT_CODE)
 
     model.save(out_dir / "last.keras")
+    # Fold finished: drop the crash-resume backup (a full-size weight duplicate)
+    # unless explicitly kept. Reaching here means fit() completed without a
+    # refresh, so the backup is no longer needed.
+    if not args.keep_training_backup and backup_dir.exists():
+        shutil.rmtree(backup_dir, ignore_errors=True)
     eval_checkpoint, checkpoint_info = resolve_segmentation_checkpoint(
         out_dir, checkpoint_policy=args.checkpoint_policy
     )

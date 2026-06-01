@@ -285,6 +285,38 @@ def _allocate_run_dir(run_root, run_name):
     return candidate
 
 
+def _find_resumable_run_dir(run_root, run_name):
+    """Return the newest interrupted run dir for this fold, or None.
+
+    A run dir is resumable when it still holds a ``.training_backup/`` (training
+    was cut short between process refreshes) but has no ``last.keras`` (the final
+    save was never reached). Reusing it lets BackupAndRestore continue the fold
+    in place instead of starting a fresh timestamped dir on every re-run, which
+    is what made checkpoints pile up.
+    """
+    if not run_root.exists():
+        return None
+    candidates = []
+    for child in run_root.iterdir():
+        if not child.is_dir() or not child.name.startswith(run_name):
+            continue
+        if (child / "last.keras").exists():
+            continue  # fold already completed
+        if (child / ".training_backup").is_dir():
+            candidates.append(child)
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def _resolve_run_dir(run_root, run_name):
+    resumable = _find_resumable_run_dir(run_root, run_name)
+    if resumable is not None:
+        print(f"Resuming interrupted run dir: {resumable}")
+        return resumable
+    return _allocate_run_dir(run_root, run_name)
+
+
 def main():
     args = parse_args()
     output_root = OUTPUT_ROOT
@@ -303,7 +335,7 @@ def main():
 
         out_dir = output_root / f"fold_{i}"
         run_root = out_dir / run_name
-        run_dir = _allocate_run_dir(run_root, run_name)
+        run_dir = _resolve_run_dir(run_root, run_name)
         cmd = [
             PYTHON,
             str(TRAIN_SCRIPT),

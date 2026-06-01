@@ -3,10 +3,15 @@ import argparse
 from pathlib import Path
 from statistics import mean, pstdev
 
+from protocol_utils import write_json
+
 
 RUNS_DIR = Path("runs/cv")
 FOLDS = [f"fold_{i}" for i in range(4)]
-MODELS = ["icpr_unet-resnet18", "icpr_munet-resnet18"]
+MODELS = ["icpr_munet", "mod_nestnet"]
+
+PER_CLASS_METRICS_FILE = "per_class_metrics_{split}.json"
+PER_TOOTH_TYPE_METRICS_FILE = "per_tooth_type_metrics_{split}.json"
 
 
 def parse_args():
@@ -42,6 +47,11 @@ def parse_args():
         type=Path,
         default=Path("runs/cv/summary_tooth_type_test.json"),
     )
+    p.add_argument(
+        "--allow-incomplete-models",
+        action="store_true",
+        help="Allow aggregation when some expected fold files are missing.",
+    )
     return p.parse_args()
 
 
@@ -49,10 +59,19 @@ def _load_json(path):
     return json.loads(path.read_text())
 
 
+def _missing_metric_files(runs_dir, model_dir, split, filename):
+    missing = []
+    for fold in FOLDS:
+        path = runs_dir / fold / model_dir / filename.format(split=split)
+        if not path.exists():
+            missing.append(str(path))
+    return missing
+
+
 def _aggregate_per_class(runs_dir, model_dir, split):
     per_class = {}
     for fold in FOLDS:
-        path = runs_dir / fold / model_dir / f"per_class_metrics_{split}.json"
+        path = runs_dir / fold / model_dir / PER_CLASS_METRICS_FILE.format(split=split)
         if not path.exists():
             continue
         rows = _load_json(path)
@@ -85,7 +104,7 @@ def _aggregate_per_class(runs_dir, model_dir, split):
 def _aggregate_tooth_type(runs_dir, model_dir, split):
     per_group = {}
     for fold in FOLDS:
-        path = runs_dir / fold / model_dir / f"per_tooth_type_metrics_{split}.json"
+        path = runs_dir / fold / model_dir / PER_TOOTH_TYPE_METRICS_FILE.format(split=split)
         if not path.exists():
             continue
         rows = _load_json(path)
@@ -120,6 +139,18 @@ def main():
     per_position = {}
     tooth_type = {}
     for model in args.models:
+        per_class_missing = _missing_metric_files(
+            args.runs_dir, model, args.per_position_split, PER_CLASS_METRICS_FILE
+        )
+        tooth_type_missing = _missing_metric_files(
+            args.runs_dir, model, args.tooth_type_split, PER_TOOTH_TYPE_METRICS_FILE
+        )
+        missing = per_class_missing + tooth_type_missing
+        if missing and not args.allow_incomplete_models:
+            sample = "\n".join(missing[:6])
+            raise SystemExit(
+                f"Incomplete metrics for {model}. Missing {len(missing)} required files.\n{sample}"
+            )
         per_position[model] = _aggregate_per_class(
             args.runs_dir, model, args.per_position_split
         )
@@ -130,12 +161,8 @@ def main():
     args.out_per_position.parent.mkdir(parents=True, exist_ok=True)
     args.out_tooth_type.parent.mkdir(parents=True, exist_ok=True)
 
-    args.out_per_position.write_text(
-        json.dumps(per_position, indent=2)
-    )
-    args.out_tooth_type.write_text(
-        json.dumps(tooth_type, indent=2)
-    )
+    write_json(args.out_per_position, per_position)
+    write_json(args.out_tooth_type, tooth_type)
     print("Wrote:", args.out_per_position)
     print("Wrote:", args.out_tooth_type)
 

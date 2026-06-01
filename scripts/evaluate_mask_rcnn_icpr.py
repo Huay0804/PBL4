@@ -13,6 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
+from protocol_utils import write_json
 
 
 IMAGE_EXTS = (".jpg", ".jpeg", ".png")
@@ -37,6 +38,12 @@ def parse_args():
     p.add_argument("--logs-dir", type=Path, default=Path("runs/mask_rcnn"))
     p.add_argument("--fold", type=int, help="Fold model index. Default: best mAP fold from cv summary.")
     p.add_argument("--weights", type=Path, help="Optional explicit .h5 weights path.")
+    p.add_argument(
+        "--checkpoint-policy",
+        choices=("best", "last"),
+        default="best",
+        help="Checkpoint selection policy when --weights is not provided.",
+    )
     p.add_argument("--subset", default="test", help="Split subset to evaluate (default: test).")
     p.add_argument("--iou-threshold", type=float, default=0.5)
     p.add_argument("--score-threshold", type=float, default=0.05)
@@ -45,12 +52,17 @@ def parse_args():
         "--summary-tooth-type",
         type=Path,
         default=Path("runs/cv/summary_tooth_type_test.json"),
-        help="Used to build Table II comparison with Mod-U-Net.",
+        help="Used to build Table II comparison with ICPR M-UNet.",
     )
     p.add_argument(
         "--munet-key",
-        default="icpr_munet-resnet18",
-        help="Key in summary_tooth_type json used for Mod-U-Net values.",
+        default="icpr_munet",
+        help="Key in summary_tooth_type json used for ICPR M-UNet values.",
+    )
+    p.add_argument(
+        "--allow-legacy-incompatible-comparison",
+        action="store_true",
+        help="Re-enable the historical detector-vs-segmentation comparison even though it mixes incompatible metrics.",
     )
     return p.parse_args()
 
@@ -88,13 +100,20 @@ def list_image_mask_pairs(images_dir: Path, masks_dir: Path):
 
 
 def _pick_fold_from_cv_summary(logs_dir: Path):
+    def _score(row):
+        for key in ("bbox_mAP@0.5", "mAP@0.5"):
+            value = row.get(key)
+            if value is not None:
+                return float(value)
+        return -1.0
+
     summary_path = logs_dir / "cv_summary.json"
     if summary_path.exists():
         try:
             payload = json.loads(summary_path.read_text())
             rows = payload.get("folds", [])
             if rows:
-                best = max(rows, key=lambda row: float(row.get("mAP@0.5", -1.0)))
+                best = max(rows, key=_score)
                 return int(best["fold"])
         except Exception:
             pass
@@ -104,7 +123,7 @@ def _pick_fold_from_cv_summary(logs_dir: Path):
         try:
             payload = json.loads(path.read_text())
             fold = int(payload["fold"])
-            m = float(payload["mAP@0.5"])
+            m = _score(payload)
         except Exception:
             continue
         if m > best_map:
@@ -123,23 +142,32 @@ def _find_weights(logs_dir: Path, fold: int):
     return None
 
 
+def _find_last_weights(logs_dir: Path, fold: int):
+    fold_dir = logs_dir / f"fold_{fold}"
+    if not fold_dir.exists():
+        return None
+    files = [p for p in fold_dir.rglob("mask_rcnn_teeth_*.h5") if p.is_file()]
+    if not files:
+        return None
+    return sorted(files, key=lambda p: p.stat().st_mtime)[-1]
+
+
 def _compute_overlaps(boxes1, boxes2):
     if boxes1.size == 0 or boxes2.size == 0:
         return np.zeros((boxes1.shape[0], boxes2.shape[0]), dtype=np.float32)
+
+    area1 = np.maximum(boxes1[:, 2] - boxes1[:, 0], 0) * np.maximum(boxes1[:, 3] - boxes1[:, 1], 0)
+    area2 = np.maximum(boxes2[:, 2] - boxes2[:, 0], 0) * np.maximum(boxes2[:, 3] - boxes2[:, 1], 0)
+
     overlaps = np.zeros((boxes1.shape[0], boxes2.shape[0]), dtype=np.float32)
-    for i, b1 in enumerate(boxes1):
-        y11, x11, y12, x12 = b1
-        a1 = max(0, y12 - y11) * max(0, x12 - x11)
-        for j, b2 in enumerate(boxes2):
-            y21, x21, y22, x22 = b2
-            a2 = max(0, y22 - y21) * max(0, x22 - x21)
-            yi1 = max(y11, y21)
-            xi1 = max(x11, x21)
-            yi2 = min(y12, y22)
-            xi2 = min(x12, x22)
-            inter = max(0, yi2 - yi1) * max(0, xi2 - xi1)
-            union = a1 + a2 - inter
-            overlaps[i, j] = inter / union if union > 0 else 0.0
+    for i in range(boxes1.shape[0]):
+        yi1 = np.maximum(boxes1[i, 0], boxes2[:, 0])
+        xi1 = np.maximum(boxes1[i, 1], boxes2[:, 1])
+        yi2 = np.minimum(boxes1[i, 2], boxes2[:, 2])
+        xi2 = np.minimum(boxes1[i, 3], boxes2[:, 3])
+        inter = np.maximum(yi2 - yi1, 0) * np.maximum(xi2 - xi1, 0)
+        union = area1[i] + area2 - inter
+        overlaps[i] = np.where(union > 0, inter / union, 0.0)
     return overlaps
 
 
@@ -255,7 +283,15 @@ def main():
     else:
         fold = args.fold
 
-    weights_path = args.weights if args.weights is not None else _find_weights(args.logs_dir, fold)
+    if args.weights is not None:
+        weights_path = args.weights
+        checkpoint_selection = "explicit_path"
+    elif args.checkpoint_policy == "best":
+        weights_path = _find_weights(args.logs_dir, fold)
+        checkpoint_selection = "best"
+    else:
+        weights_path = _find_last_weights(args.logs_dir, fold)
+        checkpoint_selection = "last"
     if weights_path is None or not Path(weights_path).exists():
         raise SystemExit(f"Missing weights for fold {fold}.")
     weights_path = Path(weights_path)
@@ -330,12 +366,18 @@ def main():
     correct = 0
     misclassified = 0
     missed = 0
+    false_positive_detections = 0
+    negative_images = 0
+    negative_images_with_false_positives = 0
+    true_negative_images = 0
 
     for image_id in dataset.image_ids:
         image = dataset.load_image(image_id)
         gt_masks, gt_class_ids = dataset.load_mask(image_id)
         gt_boxes = utils.extract_bboxes(gt_masks) if gt_masks.size else np.zeros((0, 4), dtype=np.int32)
         total_teeth += int(len(gt_class_ids))
+        is_negative_image = len(gt_class_ids) == 0
+        negative_images += int(is_negative_image)
 
         res = model.detect([image], verbose=0)[0]
         pred_boxes = res["rois"]
@@ -370,11 +412,19 @@ def main():
             if gi < 0:
                 pred_cls = int(pred_class_ids[pi])
                 fp[pred_cls] += 1
+                false_positive_detections += 1
+
+        if is_negative_image:
+            if np.any(pred_to_gt < 0):
+                negative_images_with_false_positives += 1
+            else:
+                true_negative_images += 1
 
     # Table I style
     table1 = {
         "fold_model": fold,
         "weights_path": str(weights_path),
+        "checkpoint_selection": checkpoint_selection,
         "subset": args.subset,
         "iou_threshold": args.iou_threshold,
         "score_threshold": args.score_threshold,
@@ -382,52 +432,68 @@ def main():
         "detected_and_correctly_classified": int(correct),
         "miss_classified_detections": int(misclassified),
         "missed_detections": int(missed),
+        "false_positive_detections": int(false_positive_detections),
+        "negative_images": int(negative_images),
+        "negative_images_with_false_positives": int(negative_images_with_false_positives),
+        "true_negative_images": int(true_negative_images),
     }
 
-    # Mask R-CNN dice per class from detection assignment counts.
-    class_dice = {}
+    # Detection-assignment F1 per class. This is not pixel Dice.
+    class_assignment_f1 = {}
     for c in range(1, num_classes):
         denom = 2 * tp[c] + fp[c] + fn[c]
-        class_dice[c] = float((2 * tp[c]) / denom) if denom > 0 else 0.0
+        class_assignment_f1[c] = float((2 * tp[c]) / denom) if denom > 0 else 0.0
 
-    # Table II Mask R-CNN side: avg dice per class for each tooth type
+    # Detector-only summary by tooth type from assignment F1.
     maskrcnn_tooth_type = {}
     for group, class_ids in DEFAULT_TOOTH_TYPES.items():
-        vals = [class_dice[c] for c in class_ids if c in class_dice]
+        vals = [class_assignment_f1[c] for c in class_ids if c in class_assignment_f1]
         maskrcnn_tooth_type[group] = {
             "class_ids": class_ids,
-            "dice_mean": float(np.mean(vals)) if vals else 0.0,
+            "assignment_f1_mean": float(np.mean(vals)) if vals else 0.0,
         }
 
-    # Build comparison rows with Mod-U-Net if summary is available.
-    table2 = {"mask_rcnn": maskrcnn_tooth_type, "mod_unet": {}, "rows": []}
-    if args.summary_tooth_type.exists():
+    comparison_reason = (
+        "Disabled by default: detector assignment F1 is not comparable to segmentation pixel Dice, "
+        "and the detector script selects a single fold while the segmentation summary is cross-fold aggregated."
+    )
+    table2 = {
+        "status": "disabled",
+        "reason": comparison_reason,
+        "mask_rcnn_assignment_f1": maskrcnn_tooth_type,
+        "icpr_munet_pixel_dice": {},
+        "rows": [],
+    }
+    if args.allow_legacy_incompatible_comparison and args.summary_tooth_type.exists():
         payload = json.loads(args.summary_tooth_type.read_text())
         rows = payload.get(args.munet_key, [])
         by_group = {row["group"]: row for row in rows}
+        table2["status"] = "legacy_incompatible"
         for group in ["incisor", "canine", "premolar", "molar"]:
             mod_dice = float(by_group[group]["dice_mean"]) if group in by_group else None
-            mrcnn_dice = float(maskrcnn_tooth_type[group]["dice_mean"])
-            table2["mod_unet"][group] = mod_dice
+            mrcnn_f1 = float(maskrcnn_tooth_type[group]["assignment_f1_mean"])
+            table2["icpr_munet_pixel_dice"][group] = mod_dice
             table2["rows"].append(
                 {
                     "group": group,
-                    "mod_unet_dice": mod_dice,
-                    "mask_rcnn_dice": mrcnn_dice,
+                    "icpr_munet_pixel_dice": mod_dice,
+                    "mask_rcnn_assignment_f1": mrcnn_f1,
                 }
             )
 
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "table1_detection_test.json").write_text(json.dumps(table1, indent=2))
-    (out_dir / "detection_confusion_test.json").write_text(json.dumps(confusion.tolist()))
-    (out_dir / "table2_compare_modunet_maskrcnn.json").write_text(json.dumps(table2, indent=2))
+    write_json(out_dir / "table1_detection_test.json", table1)
+    write_json(out_dir / "detection_confusion_test.json", confusion.tolist())
+    write_json(out_dir / "table2_compare_icprmunet_maskrcnn.json", table2)
 
     table1_rows = [
         ["Total Number of teeth", str(table1["total_number_of_teeth"])],
         ["Detected and correctly classified", str(table1["detected_and_correctly_classified"])],
         ["Miss-classified detections", str(table1["miss_classified_detections"])],
         ["Missed detections", str(table1["missed_detections"])],
+        ["False-positive detections", str(table1["false_positive_detections"])],
+        ["Negative images with false positives", str(table1["negative_images_with_false_positives"])],
     ]
     _render_table_png(
         title="Table I - Object detection results on test set (Mask R-CNN, IoU=0.5)",
@@ -452,24 +518,28 @@ def main():
             rows.append(
                 [
                     r["group"].capitalize(),
-                    f"{r['mod_unet_dice']*100:.2f}" if r["mod_unet_dice"] is not None else "-",
-                    f"{r['mask_rcnn_dice']*100:.2f}",
+                    f"{r['icpr_munet_pixel_dice']*100:.2f}"
+                    if r["icpr_munet_pixel_dice"] is not None
+                    else "-",
+                    f"{r['mask_rcnn_assignment_f1']*100:.2f}",
                 ]
             )
         _render_table_png(
-            title="Table II - Avg Dice(%) per class on test set",
+            title="Legacy incompatible comparison: pixel Dice vs detector assignment F1",
             rows=rows,
-            col_labels=["Tooth type", "Mod-U-Net", "Mask R-CNN"],
-            out_path=out_dir / "table2_compare_modunet_maskrcnn.png",
+            col_labels=["Tooth type", "ICPR M-UNet pixel Dice", "Mask R-CNN assignment F1"],
+            out_path=out_dir / "table2_compare_icprmunet_maskrcnn.png",
         )
 
     print("Wrote:", out_dir / "table1_detection_test.json")
     print("Wrote:", out_dir / "table1_detection_test.png")
     print("Wrote:", out_dir / "detection_confusion_test.json")
     print("Wrote:", out_dir / "fig5_molar_confusion_test.png")
-    print("Wrote:", out_dir / "table2_compare_modunet_maskrcnn.json")
+    print("Wrote:", out_dir / "table2_compare_icprmunet_maskrcnn.json")
     if table2["rows"]:
-        print("Wrote:", out_dir / "table2_compare_modunet_maskrcnn.png")
+        print("Wrote:", out_dir / "table2_compare_icprmunet_maskrcnn.png")
+    else:
+        print("Table II comparison disabled:", table2["reason"])
 
 
 if __name__ == "__main__":

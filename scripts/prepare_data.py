@@ -33,11 +33,13 @@ def copy_dir(src_root: Path, dst_root: Path, name: str) -> bool:
 def sort_key(value: str) -> tuple[int, str]:
     try:
         return (0, int(value))
-    except Exception:
+    except ValueError:
         return (1, str(value))
 
 
 def make_palette(size: int = 256) -> list[int]:
+    # Interleave bits of the class index across R, G, B so nearby class IDs
+    # map to visually distinct colors rather than a linear gradient.
     palette = [0] * (size * 3)
     for i in range(size):
         r = g = b = 0
@@ -47,7 +49,7 @@ def make_palette(size: int = 256) -> list[int]:
             g |= ((cid >> 1) & 1) << (7 - j)
             b |= ((cid >> 2) & 1) << (7 - j)
             cid >>= 3
-        palette[i * 3 + 0] = r
+        palette[i * 3] = r
         palette[i * 3 + 1] = g
         palette[i * 3 + 2] = b
     return palette
@@ -97,7 +99,7 @@ def generate_masks(ann_dir: Path, out_dir: Path, vis_dir: Path) -> int:
 
     for ann in ann_files:
         name = ann.name
-        stem = name[:-9] if name.endswith(".jpg.json") else ann.stem
+        stem = name.removesuffix(".jpg.json") if name.endswith(".jpg.json") else ann.stem
         data = json.loads(ann.read_text())
         size = data["size"]
         w, h = int(size["width"]), int(size["height"])
@@ -126,10 +128,18 @@ def generate_masks(ann_dir: Path, out_dir: Path, vis_dir: Path) -> int:
     return 0
 
 
+def _rgb_array_to_int(rgb: "np.ndarray") -> "np.ndarray":
+    return (
+        (rgb[:, :, 0].astype("uint32") << 16)
+        | (rgb[:, :, 1].astype("uint32") << 8)
+        | rgb[:, :, 2].astype("uint32")
+    )
+
+
 def derive_color_to_id_map(rgb_dir: Path, id_dir: Path) -> tuple[dict[int, int], dict[int, dict[int, int]]]:
     try:
         import numpy as np
-    except Exception as exc:
+    except ImportError as exc:
         print(f"numpy is required for mask conversion: {exc}", file=sys.stderr)
         return {}, {}
 
@@ -148,11 +158,7 @@ def derive_color_to_id_map(rgb_dir: Path, id_dir: Path) -> tuple[dict[int, int],
             print(f"size mismatch: {rgb_path} vs {id_path}", file=sys.stderr)
             continue
 
-        rgb_int = (
-            (rgb[:, :, 0].astype("uint32") << 16)
-            | (rgb[:, :, 1].astype("uint32") << 8)
-            | rgb[:, :, 2].astype("uint32")
-        )
+        rgb_int = _rgb_array_to_int(rgb)
         pair = (rgb_int.astype("uint64") << 8) | ids.astype("uint64")
         uniq, cnt = np.unique(pair.reshape(-1), return_counts=True)
         for u, c in zip(uniq, cnt):
@@ -191,7 +197,7 @@ def write_color_to_id_map(path: Path, mapping: dict[int, int]) -> None:
 def convert_rgb_masks(rgb_dir: Path, out_dir: Path, mapping: dict[int, int]) -> Counter:
     try:
         import numpy as np
-    except Exception as exc:
+    except ImportError as exc:
         print(f"numpy is required for mask conversion: {exc}", file=sys.stderr)
         return Counter()
 
@@ -199,11 +205,7 @@ def convert_rgb_masks(rgb_dir: Path, out_dir: Path, mapping: dict[int, int]) -> 
     out_dir.mkdir(parents=True, exist_ok=True)
     for rgb_path in sorted(rgb_dir.glob("*.png")):
         rgb = np.array(Image.open(rgb_path).convert("RGB"))
-        rgb_int = (
-            (rgb[:, :, 0].astype("uint32") << 16)
-            | (rgb[:, :, 1].astype("uint32") << 8)
-            | rgb[:, :, 2].astype("uint32")
-        )
+        rgb_int = _rgb_array_to_int(rgb)
         out = np.zeros(rgb_int.shape, dtype="uint8")
         for color in np.unique(rgb_int):
             label = mapping.get(int(color))

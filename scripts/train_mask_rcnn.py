@@ -6,6 +6,7 @@ Edit MODE below to switch between training and BB-map export.
 import argparse
 import json
 import os
+import random
 import sys
 from pathlib import Path
 import shutil
@@ -13,13 +14,16 @@ import shutil
 import numpy as np
 from PIL import Image
 from project_presets import get_mask_rcnn_preset
+from protocol_utils import summarize_mask_paths, validate_disjoint_pair_sets, write_json
 
 IMAGE_EXTS = (".jpg", ".jpeg", ".png")
 
 SPLITS_DIR = Path(os.environ.get("PBL4_SPLITS_DIR", "data/splits"))
-CLASS_MAP_PATH = Path("data/splits/class_map.txt")
+CLASS_MAP_PATH = Path(os.environ.get("PBL4_CLASS_MAP_PATH", "data/splits/class_map.txt"))
 LOGS_DIR = Path("runs/mask_rcnn")
+MASK_RCNN_BB_MAPS_ROOT = Path(os.environ.get("PBL4_MASK_RCNN_BB_MAPS_DIR", "data/bb_maps/mask_rcnn"))
 WEIGHTS = "coco"
+DETECT_CHECKPOINT_POLICY = "best"
 # Default to fold-based training to keep outputs under runs/mask_rcnn/fold_<k>.
 MODE = "train"  # "train" or "detect"
 TRAIN_SUBSET = "train"
@@ -33,6 +37,7 @@ DEFAULT_IMAGE_MIN_DIM = 512
 DEFAULT_IMAGE_MAX_DIM = 1024
 FIXED_IMAGE_HEIGHT = DEFAULT_IMAGE_MIN_DIM
 FIXED_IMAGE_WIDTH = DEFAULT_IMAGE_MAX_DIM
+SEED = 13
 
 
 def load_class_map(class_map_path):
@@ -108,6 +113,17 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--learning-rate", type=float, default=None, help=argparse.SUPPRESS)
     parser.add_argument(
+        "--checkpoint-policy",
+        choices=("best", "last"),
+        default=DETECT_CHECKPOINT_POLICY,
+        help="Checkpoint selection policy used in detect mode when --checkpoint-path is not provided.",
+    )
+    parser.add_argument(
+        "--checkpoint-path",
+        type=Path,
+        help="Explicit trained detector checkpoint to use in detect mode.",
+    )
+    parser.add_argument(
         "--train-fold",
         type=int,
         help=argparse.SUPPRESS,
@@ -144,8 +160,17 @@ def parse_args():
     return args
 
 
+def _find_best_weights(model_dir):
+    best_files = list(Path(model_dir).rglob("mask_rcnn_teeth_best.h5"))
+    if not best_files:
+        return None
+    return sorted(best_files, key=lambda p: p.stat().st_mtime)[-1]
+
+
 def main():
     args = parse_args()
+    random.seed(SEED)
+    np.random.seed(SEED)
     project_root = Path(__file__).resolve().parents[1]
     mask_rcnn_root = Path(
         os.environ.get("MASK_RCNN_ROOT", str(project_root / "src" / "mrcnn_tf2"))
@@ -185,6 +210,9 @@ def main():
     from mrcnn.config import Config
     from mrcnn import model as modellib
     from mrcnn import utils
+    import tensorflow as tf
+
+    tf.random.set_seed(SEED)
 
     mapping = load_class_map(CLASS_MAP_PATH)
     num_classes = max(mapping) + 1 if mapping else 1
@@ -307,6 +335,18 @@ def main():
         return weights_path
 
     def _train_on_split(split_root, model_dir):
+        train_pairs = list_image_mask_pairs(
+            Path(split_root) / TRAIN_SUBSET / "img",
+            Path(split_root) / TRAIN_SUBSET / "masks_semantic",
+        )
+        val_pairs = list_image_mask_pairs(
+            Path(split_root) / VAL_SUBSET / "img",
+            Path(split_root) / VAL_SUBSET / "masks_semantic",
+        )
+        validate_disjoint_pair_sets({"train": train_pairs, "val": val_pairs})
+        summarize_mask_paths([mask for _, mask in train_pairs], num_classes, subset_name="train")
+        summarize_mask_paths([mask for _, mask in val_pairs], num_classes, subset_name="val")
+
         dataset_train = TeethDataset()
         dataset_train.load_teeth(split_root, TRAIN_SUBSET, CLASS_MAP_PATH)
         dataset_train.prepare()
@@ -338,8 +378,6 @@ def main():
 
         original_fit = model.keras_model.fit
         best_path = Path(model.log_dir) / f"mask_rcnn_{config.NAME.lower()}_best.h5"
-        import tensorflow as tf
-
         class BestOnlyCheckpoint(tf.keras.callbacks.Callback):
             def __init__(self, checkpoint_path, best_path):
                 self.checkpoint_path = checkpoint_path
@@ -486,7 +524,7 @@ def main():
             if not weights_path.exists():
                 raise SystemExit(f"Missing trained weights file: {weights_path}")
         model.load_weights(str(weights_path), by_name=_is_legacy_h5(weights_path))
-        return model
+        return model, Path(weights_path)
 
     def _write_mask_rcnn_cv_summary(folds_root):
         per_fold = []
@@ -497,7 +535,15 @@ def main():
                 map_score = float(payload["mAP@0.5"])
             except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
                 continue
-            per_fold.append({"fold": fold_idx, "mAP@0.5": map_score})
+            per_fold.append(
+                {
+                    "fold": fold_idx,
+                    "mAP@0.5": map_score,
+                    "checkpoint_policy": payload.get("checkpoint_policy", "best"),
+                    "weights_path": payload.get("weights_path"),
+                    "run_dir": payload.get("run_dir"),
+                }
+            )
 
         # Keep only one entry per fold index and sort by fold.
         unique = {}
@@ -523,7 +569,7 @@ def main():
 
         summary = {"folds": rows, "aggregate": aggregate}
         summary_path = LOGS_DIR / "cv_summary.json"
-        summary_path.write_text(json.dumps(summary, indent=2))
+        write_json(summary_path, summary)
         return summary_path
 
     if args.mode == "train":
@@ -553,11 +599,20 @@ def main():
                     f"Using best checkpoint for mAP: {best_weights.name} "
                     f"(epoch {best_epoch}, val_loss={best_loss:.6f})"
                 )
-            inference_model = _make_inference_model(fold_log_dir, weights_path=best_weights)
+            inference_model, resolved_weights = _make_inference_model(
+                fold_log_dir, weights_path=best_weights
+            )
             map_score = _compute_map(inference_model, dataset_val)
-            summary = {"fold": args.train_fold, "mAP@0.5": map_score}
+            summary = {
+                "fold": args.train_fold,
+                "mAP@0.5": map_score,
+                "checkpoint_policy": "best",
+                "weights_path": str(resolved_weights),
+                "run_dir": str(run_dir),
+                "seed": SEED,
+            }
             summary_path = LOGS_DIR / f"cv_summary_fold_{args.train_fold}.json"
-            summary_path.write_text(json.dumps(summary, indent=2))
+            write_json(summary_path, summary)
             print(f"Fold {args.train_fold} mAP@0.5: {map_score:.4f}")
             print(f"Wrote fold summary to {summary_path}")
             cv_summary_path = _write_mask_rcnn_cv_summary(folds_root)
@@ -575,57 +630,58 @@ def main():
     inference_config = TeethInferenceConfig()
     inference_config.NUM_CLASSES = num_classes
 
-    detect_splits_root = SPLITS_DIR
+    detect_input_root = SPLITS_DIR
+    detect_export_root = MASK_RCNN_BB_MAPS_ROOT
     detect_subsets = [DETECT_SUBSET]
     if args.detect_fold is not None:
         folds_root = SPLITS_DIR / "folds"
         if not folds_root.exists():
             raise SystemExit(f"Missing folds directory: {folds_root}")
-        detect_splits_root = folds_root / f"fold_{args.detect_fold}"
-        if not detect_splits_root.exists():
-            raise SystemExit(f"Missing fold directory: {detect_splits_root}")
+        detect_input_root = folds_root / f"fold_{args.detect_fold}"
+        if not detect_input_root.exists():
+            raise SystemExit(f"Missing fold directory: {detect_input_root}")
+        detect_export_root = detect_export_root / "folds" / f"fold_{args.detect_fold}"
         detect_subsets = [TRAIN_SUBSET, VAL_SUBSET]
 
     detect_logs_dir = LOGS_DIR
+    if args.model_fold is None and args.checkpoint_path is None:
+        raise SystemExit(
+            "Detect mode requires an explicit detector source. Pass --source-fold or "
+            "--checkpoint-path."
+        )
     if args.model_fold is not None:
         detect_logs_dir = LOGS_DIR / f"fold_{args.model_fold}"
-    else:
-        direct_runs = [
-            d for d in LOGS_DIR.iterdir()
-            if d.is_dir() and d.name.startswith(inference_config.NAME.lower())
-        ]
-        if not direct_runs:
-            fold_dirs = sorted(LOGS_DIR.glob("fold_*"))
-            for fold_dir in reversed(fold_dirs):
-                has_run = any(
-                    d.is_dir() and d.name.startswith(inference_config.NAME.lower())
-                    for d in fold_dir.iterdir()
-                )
-                if has_run:
-                    detect_logs_dir = fold_dir
-                    break
     print(f"Using model_dir for detection: {detect_logs_dir}")
     model = modellib.MaskRCNN(mode="inference", config=inference_config, model_dir=detect_logs_dir)
-    weights_path = WEIGHTS
-    if WEIGHTS.lower() in ("coco", "imagenet"):
-        weights_path = "last"
-    if weights_path.lower() == "last":
+    if args.checkpoint_path is not None:
+        weights_path = Path(args.checkpoint_path)
+        checkpoint_selection = "explicit_path"
+    elif args.checkpoint_policy == "best":
+        weights_path = _find_best_weights(detect_logs_dir)
+        checkpoint_selection = "best"
+        if weights_path is None:
+            raise SystemExit(f"Missing best detector checkpoint in {detect_logs_dir}")
+    else:
         weights_path = model.find_last()
+        checkpoint_selection = "last"
         if not weights_path:
             raise SystemExit(f"Missing trained weights in {detect_logs_dir}")
-    else:
-        weights_path = Path(weights_path)
-        if not weights_path.exists():
-            raise SystemExit(f"Missing weights file: {weights_path}")
+    weights_path = Path(weights_path)
+    if not weights_path.exists():
+        raise SystemExit(f"Missing weights file: {weights_path}")
+    print(f"Using detector checkpoint ({checkpoint_selection}): {weights_path}")
     model.load_weights(str(weights_path), by_name=_is_legacy_h5(weights_path))
 
     for subset in detect_subsets:
         dataset = TeethDataset()
-        dataset.load_teeth(detect_splits_root, subset, CLASS_MAP_PATH)
+        dataset.load_teeth(detect_input_root, subset, CLASS_MAP_PATH)
         dataset.prepare()
 
-        output_dir = detect_splits_root / subset / "bb_maps"
+        output_dir = detect_export_root / subset / "bb_maps"
         output_dir.mkdir(parents=True, exist_ok=True)
+        nonzero_bb_maps = 0
+        negative_images = 0
+        negative_images_with_nonzero_priors = 0
 
         for image_id in dataset.image_ids:
             image = dataset.load_image(image_id)
@@ -639,11 +695,41 @@ def main():
                 num_classes,
                 DETECTION_MIN_CONFIDENCE,
             )
+            has_prior = bool(np.any(bb_map))
+            nonzero_bb_maps += int(has_prior)
+            mask = np.array(Image.open(dataset.image_info[image_id]["mask_path"]))
+            if mask.ndim == 3:
+                mask = mask[..., 0]
+            is_negative = int(mask.max() == 0)
+            negative_images += is_negative
+            negative_images_with_nonzero_priors += int(is_negative and has_prior)
             out_path = output_dir / f"{dataset.image_info[image_id]['id']}.npz"
             np.savez_compressed(out_path, bb=bb_map)
+        write_json(
+            output_dir / "_export_metadata.json",
+            {
+                "subset": subset,
+                "splits_root": str(detect_input_root),
+                "export_root": str(detect_export_root),
+                "source_model_dir": str(detect_logs_dir),
+                "source_fold": args.model_fold,
+                "checkpoint_policy": args.checkpoint_policy,
+                "checkpoint_selection": checkpoint_selection,
+                "weights_path": str(weights_path),
+                "class_map_path": str(CLASS_MAP_PATH),
+                "num_classes": int(num_classes),
+                "bb_map_shape": [FIXED_IMAGE_HEIGHT, FIXED_IMAGE_WIDTH, num_classes],
+                "images": len(dataset.image_ids),
+                "nonzero_bb_maps": nonzero_bb_maps,
+                "negative_images": negative_images,
+                "negative_images_with_nonzero_priors": negative_images_with_nonzero_priors,
+                "detection_min_confidence": DETECTION_MIN_CONFIDENCE,
+                "seed": SEED,
+            },
+        )
 
     _clear_tf_memory()
-    print(f"Saved BB maps under {detect_splits_root}.")
+    print(f"Saved BB maps under {detect_export_root}.")
 
 
 if __name__ == "__main__":

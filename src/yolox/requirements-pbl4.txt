@@ -1,0 +1,6 @@
+loguru
+pycocotools>=2.0.2
+tabulate
+tqdm
+thop
+ninja

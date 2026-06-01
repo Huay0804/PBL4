@@ -72,3 +72,22 @@ logs/
 # Local reports and scratch output
 *.docx
 tmp/
+
+# Local assistant/scratch artifacts
+.codex
+images/
+src.zip
+src/segmentation_models.zip
+
+# Omitted non-runtime extras from the vendored YOLOX source snapshot
+src/yolox/.github/
+src/yolox/.gitignore
+src/yolox/.pre-commit-config.yaml
+src/yolox/.readthedocs.yaml
+src/yolox/SECURITY.md
+src/yolox/assets/
+src/yolox/demo/
+src/yolox/docs/
+src/yolox/exps/example/
+src/yolox/hubconf.py
+src/yolox/tests/

@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 
-DEFAULT_MODELS = ["icpr_unet-resnet18", "icpr_munet-resnet18"]
+DEFAULT_MODELS = ["icpr_munet", "mod_nestnet"]
+SUPPORTED_MAP_KEYS = ("bbox_mAP@0.5", "mAP@0.5")
+STD_RADAR_TICK_INTERVAL = 0.05
 UPPER_JAW_CLASS_IDS = list(range(1, 17))
 LOWER_JAW_CLASS_IDS = list(range(17, 33))
 # Dataset class ids are ordered 1..32 clockwise starting from the image's
@@ -62,7 +64,7 @@ def parse_args():
         "--models",
         nargs="+",
         default=DEFAULT_MODELS,
-        help="Model run directory names inside each fold (e.g., icpr_unet-resnet18).",
+        help="Model run directory names inside each fold (e.g., icpr_munet).",
     )
     p.add_argument(
         "--summary-per-position",
@@ -79,6 +81,11 @@ def parse_args():
         type=Path,
         default=Path("runs/mask_rcnn/cv_summary.json"),
     )
+    p.add_argument(
+        "--allow-incomplete-models",
+        action="store_true",
+        help="Allow figure generation when some requested model folds are missing.",
+    )
     return p.parse_args()
 
 
@@ -88,21 +95,23 @@ def _load_json(path: Path):
 
 def _model_label(model_dir: str) -> str:
     # Keep labels short and paper-like.
-    if model_dir.startswith("icpr_unet"):
-        return "U-Net"
     if model_dir.startswith("icpr_munet"):
-        return "Mod-U-Net"
+        return "ICPR M-UNet"
+    if model_dir.startswith("mod_nestnet"):
+        return "Mod-NestNet"
     return model_dir
 
 
-def _collect_overall_test_metrics(cv_dir: Path, models: list[str]):
+def _collect_overall_test_metrics(cv_dir: Path, models: list[str], allow_incomplete=False):
     overall = {}
     for model in models:
         fold_ious = []
         fold_dices = []
+        missing = []
         for i in range(4):
             path = cv_dir / f"fold_{i}" / model / "per_class_metrics_test.json"
             if not path.exists():
+                missing.append(str(path))
                 continue
             rows = _load_json(path)
             rows = [r for r in rows if int(r["class_id"]) != 0]
@@ -110,6 +119,11 @@ def _collect_overall_test_metrics(cv_dir: Path, models: list[str]):
                 continue
             fold_ious.append(float(np.mean([float(r["iou"]) for r in rows])))
             fold_dices.append(float(np.mean([float(r["dice"]) for r in rows])))
+        if missing and not allow_incomplete:
+            sample = "\n".join(missing[:4])
+            raise SystemExit(
+                f"Incomplete overall-test metrics for {model}. Missing {len(missing)} fold files.\n{sample}"
+            )
         if not fold_ious:
             continue
         overall[model] = {
@@ -118,6 +132,7 @@ def _collect_overall_test_metrics(cv_dir: Path, models: list[str]):
             "dice_mean": float(np.mean(fold_dices)),
             "dice_std": float(np.std(fold_dices)),
             "folds": len(fold_ious),
+            "is_complete": len(missing) == 0,
         }
     return overall
 
@@ -129,10 +144,15 @@ def plot_fig1_mask_rcnn_map(mask_summary: dict, out_dir: Path):
         return None
 
     x = [int(row["fold"]) for row in folds]
-    y = [float(row["mAP@0.5"]) for row in folds]
+    metric_key = next((k for k in SUPPORTED_MAP_KEYS if k in folds[0]), None)
+    if metric_key is None:
+        return None
+    mean_key = f"mean_{metric_key}"
+    std_key = f"std_{metric_key}"
+    y = [float(row[metric_key]) for row in folds]
     agg = mask_summary.get("aggregate", {})
-    mean_map = agg.get("mean_mAP@0.5")
-    std_map = agg.get("std_mAP@0.5")
+    mean_map = agg.get(mean_key)
+    std_map = agg.get(std_key)
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 4))
     ax.bar(x, y, width=0.6, color="#4C72B0")
@@ -140,8 +160,8 @@ def plot_fig1_mask_rcnn_map(mask_summary: dict, out_dir: Path):
         ax.axhline(float(mean_map), color="#DD8452", linestyle="--", linewidth=1.2, label="CV mean")
     ax.set_ylim(0.0, 1.0)
     ax.set_xlabel("Fold")
-    ax.set_ylabel("mAP@0.5")
-    title = "Mask R-CNN mAP@0.5 per fold"
+    ax.set_ylabel(metric_key)
+    title = f"Mask R-CNN {metric_key} per fold"
     if mean_map is not None and std_map is not None:
         title += f" (mean={float(mean_map):.4f}, std={float(std_map):.4f})"
     ax.set_title(title)
@@ -259,7 +279,7 @@ def plot_fig3_per_tooth_dice(summary_per_position: dict, models: list[str], out_
 
     std_values = [v for _, vals in (upper_std_series + lower_std_series) for v in vals]
     std_max = max(std_values) if std_values else 0.1
-    std_max = max(0.1, min(1.0, np.ceil(std_max / 0.05) * 0.05))
+    std_max = max(0.1, min(1.0, np.ceil(std_max / STD_RADAR_TICK_INTERVAL) * STD_RADAR_TICK_INTERVAL))
 
     fig, axes = plt.subplots(
         2,
@@ -331,7 +351,9 @@ def main():
     mask_rcnn_summary = (
         _load_json(args.mask_rcnn_summary) if args.mask_rcnn_summary.exists() else {}
     )
-    overall_test = _collect_overall_test_metrics(args.cv_dir, args.models)
+    overall_test = _collect_overall_test_metrics(
+        args.cv_dir, args.models, allow_incomplete=args.allow_incomplete_models
+    )
 
     fig1 = plot_fig1_mask_rcnn_map(mask_rcnn_summary, args.out_dir)
     fig2 = plot_fig2_overall_test(overall_test, args.models, args.out_dir)

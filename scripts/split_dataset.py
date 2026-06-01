@@ -242,18 +242,8 @@ def summarize(split_counts, ratios, balance_mode, label_prefix=""):
 
 def main():
     args = parse_args()
-    global TEST_COUNT, TEST_RATIO, FOLDS, SEED, MODE, INCLUDE_BACKGROUND, BALANCE_MODE, IMAGE_BALANCE_WEIGHT, DRY_RUN
-    TEST_COUNT = args.test_count
-    TEST_RATIO = args.test_ratio
-    FOLDS = args.folds
-    SEED = args.seed
-    MODE = args.mode
-    INCLUDE_BACKGROUND = args.include_background
-    BALANCE_MODE = args.balance_mode
-    IMAGE_BALANCE_WEIGHT = args.image_balance_weight
-    DRY_RUN = args.dry_run
 
-    if FOLDS < 2:
+    if args.folds < 2:
         raise ValueError("folds must be >= 2.")
 
     pairs = list_pairs(IMAGES_DIR, MASKS_DIR)
@@ -267,99 +257,86 @@ def main():
         counts = mask_counts(
             mask_path,
             num_classes,
-            include_background=INCLUDE_BACKGROUND,
-            balance_mode=BALANCE_MODE,
+            include_background=args.include_background,
+            balance_mode=args.balance_mode,
         )
-        samples.append(
-            {
-                "image": img_path,
-                "mask": mask_path,
-                "counts": counts,
-            }
-        )
+        samples.append({"image": img_path, "mask": mask_path, "counts": counts})
 
+    # Shuffle first (for deterministic tie-breaking), then stable-sort by class richness.
+    random.Random(args.seed).shuffle(samples)
     samples.sort(
-        key=lambda s: (-int(s["counts"].sum()), -int(np.count_nonzero(s["counts"])), s["image"].name)
-    )
-    random.Random(SEED).shuffle(samples)
-    samples.sort(
-        key=lambda s: (-int(s["counts"].sum()), -int(np.count_nonzero(s["counts"])), s["image"].name)
+        key=lambda s: (-int(s["counts"].sum()), -int(np.count_nonzero(s["counts"])))
     )
 
     total_samples = len(samples)
-    if TEST_COUNT is not None:
-        if TEST_COUNT <= 0 or TEST_COUNT >= total_samples:
+    if args.test_count is not None:
+        if args.test_count <= 0 or args.test_count >= total_samples:
             raise ValueError("test-count must be between 1 and total_samples - 1.")
-        test_samples, train_samples = select_balanced_subset(samples, TEST_COUNT)
+        test_samples, train_samples = select_balanced_subset(samples, args.test_count)
         split_counts = {
             "test": sum_counts(test_samples, num_classes),
             "train_pool": sum_counts(train_samples, num_classes),
         }
         split_ratios = {
-            "test": TEST_COUNT / total_samples,
-            "train_pool": 1.0 - (TEST_COUNT / total_samples),
+            "test": args.test_count / total_samples,
+            "train_pool": 1.0 - (args.test_count / total_samples),
         }
     else:
-        test_ratio = TEST_RATIO if TEST_RATIO is not None else 0.2
+        test_ratio = args.test_ratio if args.test_ratio is not None else 0.2
         if test_ratio <= 0 or test_ratio >= 1:
             raise ValueError("test-ratio must be between 0 and 1.")
-
         split_ratios = {"test": test_ratio, "train_pool": 1.0 - test_ratio}
-        split_samples, split_counts = assign_splits(
-            samples, split_ratios, IMAGE_BALANCE_WEIGHT
-        )
+        split_samples, split_counts = assign_splits(samples, split_ratios, args.image_balance_weight)
         test_samples = split_samples["test"]
         train_samples = split_samples["train_pool"]
 
-    fold_ratios = {f"fold_{i}": 1.0 / FOLDS for i in range(FOLDS)}
-    fold_samples, fold_counts = assign_splits(train_samples, fold_ratios, IMAGE_BALANCE_WEIGHT)
+    fold_ratios = {f"fold_{i}": 1.0 / args.folds for i in range(args.folds)}
+    fold_samples, fold_counts = assign_splits(train_samples, fold_ratios, args.image_balance_weight)
 
     output_dir = OUTPUT_DIR
-    if output_dir.exists() and not DRY_RUN:
+    if output_dir.exists() and not args.dry_run:
         resolved = output_dir.resolve()
         if resolved in (Path("/"), Path.home(), Path.cwd()):
             raise ValueError(f"Refusing to clear unsafe output dir: {resolved}")
         shutil.rmtree(output_dir)
-    if not DRY_RUN:
+    if not args.dry_run:
         (output_dir / "folds").mkdir(parents=True, exist_ok=True)
 
     def _write_samples(items, root_dir):
         img_dir = root_dir / "img"
         mask_dir = root_dir / MASKS_DIR_NAME
-        if not DRY_RUN:
+        if not args.dry_run:
             img_dir.mkdir(parents=True, exist_ok=True)
             mask_dir.mkdir(parents=True, exist_ok=True)
         for sample in items:
-            if DRY_RUN:
+            if args.dry_run:
                 continue
-            copy_item(sample["image"], img_dir / sample["image"].name, MODE)
-            copy_item(sample["mask"], mask_dir / sample["mask"].name, MODE)
+            copy_item(sample["image"], img_dir / sample["image"].name, args.mode)
+            copy_item(sample["mask"], mask_dir / sample["mask"].name, args.mode)
 
     _write_samples(test_samples, output_dir / "test")
 
     fold_names = sorted(fold_samples.keys())
     for fold_name in fold_names:
         val_items = fold_samples[fold_name]
-        train_items = []
-        for other_name in fold_names:
-            if other_name != fold_name:
-                train_items.extend(fold_samples[other_name])
-
+        train_items = [
+            s for other_name in fold_names if other_name != fold_name
+            for s in fold_samples[other_name]
+        ]
         fold_root = output_dir / "folds" / fold_name
         _write_samples(train_items, fold_root / "train")
         _write_samples(val_items, fold_root / "val")
 
-    class_map_path = CLASS_MAP
-    if class_map_path.exists() and not DRY_RUN:
-        shutil.copy2(class_map_path, output_dir / "class_map.txt")
+    if CLASS_MAP.exists() and not args.dry_run:
+        shutil.copy2(CLASS_MAP, output_dir / "class_map.txt")
 
-    print(f"Split summary (balance: {BALANCE_MODE}, folds={FOLDS}):")
+    print(f"Split summary (balance: {args.balance_mode}, folds={args.folds}):")
     print(f"test: {len(test_samples)} samples")
     print(f"train_pool: {len(train_samples)} samples")
     for fold_name in fold_names:
         print(f"{fold_name} val: {len(fold_samples[fold_name])} samples")
-    summarize(split_counts, split_ratios, BALANCE_MODE, label_prefix="test/train_pool")
-    summarize(fold_counts, fold_ratios, BALANCE_MODE, label_prefix="folds")
+    summarize(split_counts, split_ratios, args.balance_mode, label_prefix="test/train_pool")
+    summarize(fold_counts, fold_ratios, args.balance_mode, label_prefix="folds")
 
 
 if __name__ == "__main__":

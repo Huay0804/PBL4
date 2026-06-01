@@ -7,6 +7,9 @@ dental X-ray images:
 2. `ICPR U-Net` / `ICPR Modified U-Net` perform semantic segmentation, with the
    modified model consuming the exported prior maps.
 
+An optional vendored `YOLOX` detector is also available under `src/yolox/` as a
+box-only alternative to Mask R-CNN for prior generation.
+
 The model architecture and overall pipeline follow the reference ICPR paper.
 The code in this repository is the project implementation of that pipeline.
 
@@ -18,6 +21,8 @@ The code in this repository is the project implementation of that pipeline.
   [z-mahmud22/Mask-RCNN_TF2.14.0](https://github.com/z-mahmud22/Mask-RCNN_TF2.14.0)
 - Original Mask R-CNN implementation that the TF2 port is based on:
   [matterport/Mask_RCNN](https://github.com/matterport/Mask_RCNN)
+- YOLOX detector code source used in this project:
+  [Megvii-BaseDetection/YOLOX](https://github.com/Megvii-BaseDetection/YOLOX)
 
 The vendored `src/mrcnn_tf2/` code in this repository is credited to the
 TensorFlow 2 port above and to the original Matterport `Mask_RCNN` project,
@@ -30,6 +35,7 @@ Two Python environments are used:
 
 - `venv/` for segmentation training, evaluation, summaries, and figures
 - `src/mrcnn_tf2/mrcnn-tf2-venv/` for Mask R-CNN training and detection
+- optionally, a YOLOX-capable environment for `scripts/train_yolox.py`
 
 ### Tested OS
 
@@ -65,6 +71,7 @@ Use this environment for:
 - `scripts/evaluate_final.py`
 - `scripts/summarize_icpr_metrics.py`
 - `scripts/make_icpr_figures.py`
+- optionally, `scripts/train_yolox.py` if PyTorch + YOLOX deps are installed
 
 ### Current segmentation package versions
 
@@ -90,9 +97,28 @@ that depends on it. This applies to both:
 If augmentation based on the upstream Mask R-CNN hooks is needed later,
 `imgaug` can still be installed manually as an extra dependency.
 
+### Optional YOLOX environment
+
+If you want to train or run the vendored YOLOX detector locally, create a
+PyTorch-capable environment and install YOLOX from source:
+
+```bash
+python3.12 -m venv src/yolox/yolox-venv
+source src/yolox/yolox-venv/bin/activate
+python -m pip install --upgrade pip
+pip install torch torchvision
+pip install -r src/yolox/requirements-pbl4.txt
+pip install -e src/yolox
+```
+
+Use this environment for:
+
+- `scripts/train_yolox.py`
+
 ## Repository Layout
 
 - `scripts/train_mask_rcnn.py`: Mask R-CNN train/detect entrypoint
+- `scripts/train_yolox.py`: YOLOX train/detect entrypoint
 - `scripts/train_segmentation_cv.py`: segmentation training over a selected CV fold
 - `scripts/train.py`: low-level segmentation training/evaluation engine
 - `scripts/evaluate_final.py`: fixed test-set evaluation for segmentation models
@@ -103,6 +129,7 @@ If augmentation based on the upstream Mask R-CNN hooks is needed later,
 - `scripts/split_dataset.py`: fixed test split plus 4-fold CV split generation
 - `src/segmentation_models/icpr_unet/model.py`: ICPR U-Net and Modified U-Net
 - `src/mrcnn_tf2/`: TF2-compatible Mask R-CNN codebase
+- `src/yolox/`: vendored YOLOX detector codebase
 
 ## Typical Workflow
 
@@ -142,6 +169,39 @@ Export to a target CV fold (`train/val` inside that fold):
 src/mrcnn_tf2/mrcnn-tf2-venv/bin/python scripts/train_mask_rcnn.py --mode detect --source-fold 0 --target-fold 0
 ```
 
+This writes priors under:
+
+```text
+data/bb_maps/mask_rcnn/{test,folds/fold_<k>/{train,val}}/bb_maps
+```
+
+### 4b. Train YOLOX on a single fold
+
+```bash
+src/yolox/yolox-venv/bin/python scripts/train_yolox.py --mode train --fold 0
+```
+
+### 4c. Export YOLOX BB maps
+
+Export train/val priors for fold `0` and include the fixed test split:
+
+```bash
+src/yolox/yolox-venv/bin/python scripts/train_yolox.py --mode detect --source-fold 0 --target-fold 0 --include-test
+```
+
+This writes YOLOX priors under:
+
+```text
+data/bb_maps/yolox/{test,folds/fold_<k>/{train,val}}/bb_maps
+```
+
+To train BB-gated segmentation with a specific BB source:
+
+```bash
+venv/bin/python scripts/train_segmentation_cv.py --model icpr_munet --fold 0 --bb-source yolox --eval-test
+venv/bin/python scripts/train_segmentation_cv.py --model icpr_munet --fold 0 --bb-source mask_rcnn --eval-test
+```
+
 ### 5. Train a segmentation model on one CV fold
 
 ```bash
@@ -154,6 +214,8 @@ venv/bin/python scripts/train_segmentation_cv.py --model icpr_munet --fold 0
 ```bash
 venv/bin/python scripts/evaluate_final.py --model icpr_unet --cv-fold 0
 venv/bin/python scripts/evaluate_final.py --model icpr_munet --cv-fold 0
+venv/bin/python scripts/evaluate_final.py --model icpr_munet --cv-fold 0 --bb-source yolox
+venv/bin/python scripts/evaluate_final.py --model icpr_munet --cv-fold 0 --bb-source mask_rcnn
 ```
 
 ### 7. Build aggregated summaries and figures

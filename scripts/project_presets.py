@@ -60,10 +60,72 @@ YOLOX_PRESET = {
 }
 
 
+# Ultralytics YOLO instance-segmentation baselines run under the SAME protocol
+# as the dense segmenters (4-fold CV + fixed-test eval, per-class/position/
+# tooth-type IoU+Dice). They predict per-instance masks, which evaluate_yolo_seg
+# rasterizes back into a 33-class label map before scoring, so the resulting
+# test_summary.json is directly comparable to TransUNet's.
+#
+# `weights_template` is formatted with the chosen size letter (n/s/m/l/x).
+# yolo11 ships COCO-pretrained -seg weights (the proven baseline); yolo26 is the
+# Jan-2026 SOTA "latest" comparison.
+YOLO_SEG_MODELS = {
+    "yolo11": {
+        "weights_template": "yolo11{size}-seg.pt",
+        "run_name": "yolo11_seg",
+    },
+    "yolo26": {
+        "weights_template": "yolo26{size}-seg.pt",
+        "run_name": "yolo26_seg",
+    },
+}
+
+DEFAULT_YOLO_SEG_MODEL = "yolo11"
+
+YOLO_SEG_PRESET = {
+    "size": "m",            # n/s/m/l/x — m balances mask quality vs. T4/P100 memory
+    "epochs": 80,           # matches the YOLOX/Mask R-CNN detector presets
+    "batch": 8,
+    "imgsz": 1024,          # rect training keeps the 1:2 (512x1024) aspect ratio
+    "rect": True,
+    "learning_rate": 0.001,
+    "input_height": 512,
+    "input_width": 1024,
+    # Inference postprocessing used during fixed-test evaluation.
+    "conf_threshold": 0.25,
+    "iou_threshold": 0.7,
+    "min_polygon_area": 16,  # drop speckle contours when converting masks->labels
+    "patience": 20,          # YOLO early-stopping (epochs without val improvement)
+}
+
+
 def get_segmentation_preset(model_name):
     if model_name not in SEGMENTATION_PRESETS:
         raise KeyError(f"Unknown segmentation model preset: {model_name}")
     return deepcopy(SEGMENTATION_PRESETS[model_name])
+
+
+def get_yolo_seg_preset():
+    return deepcopy(YOLO_SEG_PRESET)
+
+
+def resolve_yolo_seg_model(model_name, size=None):
+    """Map a friendly alias (yolo11/yolo26) to its ultralytics weights string.
+
+    Also accepts a raw ultralytics spec (e.g. 'yolo11m-seg.pt' or a path),
+    which is returned unchanged with a derived run name.
+    """
+    if model_name in YOLO_SEG_MODELS:
+        spec = YOLO_SEG_MODELS[model_name]
+        size = size or YOLO_SEG_PRESET["size"]
+        return {
+            "alias": model_name,
+            "weights": spec["weights_template"].format(size=size),
+            "run_name": spec["run_name"],
+        }
+    # Raw weights string / checkpoint path passthrough.
+    stem = model_name.replace(".pt", "").replace("/", "_")
+    return {"alias": model_name, "weights": model_name, "run_name": stem}
 
 
 def get_mask_rcnn_preset():
