@@ -75,7 +75,11 @@ def train_fold(fold_index, model_spec, preset, args):
             f"(or drop --skip-prepare)."
         )
 
-    project_dir = OUTPUT_ROOT / f"fold_{fold_index}"
+    # Use an ABSOLUTE project path: some Ultralytics versions nest a relative
+    # project= under their default runs/<task>/ dir (e.g. runs/segment/runs/cv/
+    # fold_0/...). An absolute path is used verbatim. The save_dir relocation
+    # below is kept as a safety net for versions that ignore project= entirely.
+    project_dir = (OUTPUT_ROOT / f"fold_{fold_index}").resolve()
     run_name = model_spec["run_name"]
 
     epochs = args.epochs or preset["epochs"]
