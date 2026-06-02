@@ -16,6 +16,7 @@ Each fold writes ``runs/cv/fold_<k>/<run_name>/weights/best.pt`` plus a
 
 import argparse
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -102,9 +103,23 @@ def train_fold(fold_index, model_spec, preset, args):
         seed=13,
     )
 
+    trainer = getattr(model, "trainer", None)
+
+    # Some Ultralytics builds ignore project=/name= and save to their default
+    # runs/<task>/ dir. The trainer's save_dir is ground truth — relocate it into
+    # the canonical CV layout so eval and the results zip find the weights where
+    # they expect them, regardless of the version's path handling.
+    target_dir = project_dir / run_name
+    actual_dir = Path(getattr(trainer, "save_dir", target_dir))
+    if actual_dir.exists() and actual_dir.resolve() != target_dir.resolve():
+        print(f"Ultralytics saved to {actual_dir}; relocating -> {target_dir}")
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(actual_dir), str(target_dir))
+
     # After auto-batch, the trainer holds the size it actually chose. The
     # attribute name has shifted across Ultralytics versions, so probe both.
-    trainer = getattr(model, "trainer", None)
     resolved_batch = getattr(trainer, "batch_size", None)
     if resolved_batch in (None, -1) and trainer is not None:
         resolved_batch = getattr(getattr(trainer, "args", None), "batch", None)
@@ -112,7 +127,7 @@ def train_fold(fold_index, model_spec, preset, args):
         resolved_batch = requested_batch
     resolved_batch = int(resolved_batch)
 
-    best = project_dir / run_name / "weights" / "best.pt"
+    best = target_dir / "weights" / "best.pt"
     write_json(
         project_dir / run_name / "fold_train_meta.json",
         {
