@@ -155,10 +155,15 @@ def parse_args():
             if env_mixed_precision is not None
             else bool(preset.get("mixed_precision", False))
         )
+    cli_ds_train_output_index = args.ds_train_output_index is not None
     if args.ds_train_head is None:
         args.ds_train_head = preset.get("ds_train_head", "last")
-    if args.ds_train_output_index is None:
+    if args.ds_train_head == "index" and args.ds_train_output_index is None:
         args.ds_train_output_index = preset.get("ds_train_output_index")
+    elif args.ds_train_head != "index":
+        if cli_ds_train_output_index:
+            parser.error("--ds-train-output-index can only be used when --ds-train-head=index.")
+        args.ds_train_output_index = None
     if args.ds_inference is None:
         args.ds_inference = preset.get("ds_inference", "average")
     args.decoder_filters = preset.get("decoder_filters")
@@ -180,8 +185,6 @@ def parse_args():
         parser.error("--ds-output-index can only be used when --ds-inference=index.")
     if args.ds_train_head == "index" and args.ds_train_output_index is None:
         parser.error("--ds-train-output-index is required when --ds-train-head=index.")
-    if args.ds_train_head != "index" and args.ds_train_output_index is not None:
-        parser.error("--ds-train-output-index can only be used when --ds-train-head=index.")
     if (
         args.ds_train_output_index is not None
         and not 0 <= args.ds_train_output_index < DEEP_SUPERVISION_HEAD_COUNT
