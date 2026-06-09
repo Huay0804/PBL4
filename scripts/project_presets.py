@@ -35,10 +35,17 @@ SEGMENTATION_PRESETS = {
         "process_restart_interval": 5,
         "early_stopping_patience": 4,
     },
+    "icpr_unet": {
+        "batch_size": 1,
+        "epochs": 60,
+        "learning_rate": 1e-4,
+        "loss": "ce_dice",
+        "mixed_precision": False,
+    },
 }
 
 # Image-only segmentation models do not consume bounding-box prior maps.
-IMAGE_ONLY_SEGMENTATION_MODELS = ("transunet",)
+IMAGE_ONLY_SEGMENTATION_MODELS = ("transunet", "icpr_unet")
 
 MASK_RCNN_PRESET = {
     "epochs": 80,

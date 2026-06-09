@@ -1,0 +1,68 @@
+{
+  "model": "yolo11",
+  "folds": 4,
+  "aggregate": {
+    "macro_iou": {
+      "mean": 0.715663559315152,
+      "std": 0.011546355244683816
+    },
+    "macro_dice": {
+      "mean": 0.8335540614620948,
+      "std": 0.007944426677615348
+    },
+    "weighted_iou": {
+      "mean": 0.720354957617067,
+      "std": 0.011268432460079601
+    },
+    "weighted_dice": {
+      "mean": 0.836747984413105,
+      "std": 0.007722545923773676
+    }
+  },
+  "per_fold": [
+    {
+      "macro_iou": 0.7215556602393167,
+      "macro_dice": 0.8376867239920903,
+      "weighted_iou": 0.7261071712613114,
+      "weighted_dice": 0.8407531983594295,
+      "worst_class_id": 13,
+      "worst_iou": 0.6559354984092307,
+      "worst_dice": 0.7922234882208311,
+      "pixels": 8265030,
+      "include_background": false
+    },
+    {
+      "macro_iou": 0.6964302826281727,
+      "macro_dice": 0.820326342522118,
+      "weighted_iou": 0.7015367713579151,
+      "weighted_dice": 0.8238529886463629,
+      "worst_class_id": 13,
+      "worst_iou": 0.6159054306057866,
+      "worst_dice": 0.7623038068197963,
+      "pixels": 8265030,
+      "include_background": false
+    },
+    {
+      "macro_iou": 0.7178819563336157,
+      "macro_dice": 0.8350158006713985,
+      "weighted_iou": 0.7226844712917098,
+      "weighted_dice": 0.83830201929164,
+      "worst_class_id": 13,
+      "worst_iou": 0.6045218855341028,
+      "worst_dice": 0.7535227671050102,
+      "pixels": 8265030,
+      "include_background": false
+    },
+    {
+      "macro_iou": 0.7267863380595027,
+      "macro_dice": 0.8411873786627724,
+      "weighted_iou": 0.7310914165573318,
+      "weighted_dice": 0.8440837313549877,
+      "worst_class_id": 13,
+      "worst_iou": 0.6374242714582627,
+      "worst_dice": 0.7785694673874393,
+      "pixels": 8265030,
+      "include_background": false
+    }
+  ]
+}

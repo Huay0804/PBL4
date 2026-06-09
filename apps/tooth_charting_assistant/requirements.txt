@@ -1,0 +1,11 @@
+# Tooth Charting Assistant — app runtime deps (isolated from the research env).
+# The YOLO backend (default) needs only these. Dense Keras models (TransUNet etc.)
+# additionally require a working TensorFlow/Keras install — intentionally NOT
+# pinned here to keep the app lightweight; install the research environment for
+# those.
+streamlit>=1.30
+ultralytics>=8.3.0
+opencv-python-headless>=4.8
+pillow>=9.5
+numpy>=1.24
+pandas>=2.0

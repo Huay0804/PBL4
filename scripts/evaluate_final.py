@@ -77,6 +77,7 @@ def parse_args():
             "mod_nestnet",
             "icpr_munet",
             "transunet",
+            "icpr_unet",
         ],
     )
     parser.add_argument("--batch-size", type=int, default=None, help=argparse.SUPPRESS)

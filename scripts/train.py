@@ -25,6 +25,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from segmentation_models import (
     ModifiedNestnet,
     ICPRModifiedUnet,
+    ICPRUnet,
     TransUNet,
 )
 from helper_functions import (
@@ -101,6 +102,7 @@ def parse_args():
             "mod_nestnet",
             "icpr_munet",
             "transunet",
+            "icpr_unet",
         ],
     )
     parser.add_argument("--batch-size", type=int, default=None, help=argparse.SUPPRESS)
@@ -1047,6 +1049,12 @@ def build_model(args, num_classes, input_shape, bb_channels):
         )
     if args.model == "transunet":
         return TransUNet(
+            input_shape=input_shape,
+            classes=classes,
+            activation=activation,
+        )
+    if args.model == "icpr_unet":
+        return ICPRUnet(
             input_shape=input_shape,
             classes=classes,
             activation=activation,
