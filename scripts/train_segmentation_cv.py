@@ -10,9 +10,9 @@ from project_presets import DEFAULT_SEGMENTATION_MODEL, get_segmentation_preset
 from protocol_utils import load_json, merge_fold_rows, write_json
 
 
-FOLDS_DIR = Path("data/splits/folds")
+FOLDS_DIR = Path(os.environ.get("PBL4_FOLDS_DIR", "data/splits/folds"))
 FOLDS = 4
-OUTPUT_ROOT = Path("runs/cv")
+OUTPUT_ROOT = Path(os.environ.get("PBL4_CV_OUTPUT_DIR", "runs/cv"))
 INCLUDE_BACKGROUND = False
 TRAIN_SCRIPT = Path("scripts/train.py")
 PYTHON = sys.executable
@@ -354,17 +354,21 @@ def main():
             args.loss,
             "--checkpoint-policy",
             args.checkpoint_policy,
-            "--ds-train-head",
-            args.ds_train_head,
-            "--ds-inference",
-            args.ds_inference,
             "--run-dir",
             str(run_dir),
         ]
-        if args.ds_train_head == "index":
-            cmd += ["--ds-train-output-index", str(args.ds_train_output_index)]
-        if args.ds_inference == "index":
-            cmd += ["--ds-output-index", str(args.ds_output_index)]
+        # Deep-supervision flags are only consumed by mod_nestnet; passing them
+        # for image-only / single-output models is silently ignored downstream
+        # and makes the launched command misleading in the logs.
+        if args.model == "mod_nestnet":
+            cmd += [
+                "--ds-train-head", args.ds_train_head,
+                "--ds-inference", args.ds_inference,
+            ]
+            if args.ds_train_head == "index":
+                cmd += ["--ds-train-output-index", str(args.ds_train_output_index)]
+            if args.ds_inference == "index":
+                cmd += ["--ds-output-index", str(args.ds_output_index)]
         if args.eval_test:
             cmd.append("--eval-test")
         if args.mixed_precision:
@@ -372,16 +376,21 @@ def main():
 
         env = os.environ.copy()
         env["PBL4_SPLITS_DIR"] = str(fold_dir)
-        env["PBL4_BB_MAPS_DIR"] = str(
-            _resolve_bb_maps_fold_dir(args.model, args.bb_source, i, fold_dir)
-        )
         env["PBL4_CLASS_MAP_PATH"] = str(FOLDS_DIR.parent / "class_map.txt")
         env["PBL4_OUTPUT_DIR"] = str(out_dir)
+        # Only set the BB-maps env for models that actually consume bb_maps; for
+        # image-only models train.py ignores it, but setting it would print a
+        # misleading "Using BB maps root: <splits dir>" in the launcher log.
+        if args.model in BB_REQUIRED_MODELS:
+            env["PBL4_BB_MAPS_DIR"] = str(
+                _resolve_bb_maps_fold_dir(args.model, args.bb_source, i, fold_dir)
+            )
         if args.process_restart_interval:
             env["PBL4_PROCESS_RESTART_INTERVAL"] = str(args.process_restart_interval)
 
         print(f"Running fold {i}: {' '.join(cmd)}")
-        print(f"Using BB maps root: {env['PBL4_BB_MAPS_DIR']}")
+        if args.model in BB_REQUIRED_MODELS:
+            print(f"Using BB maps root: {env['PBL4_BB_MAPS_DIR']}")
         while True:
             result = subprocess.run(cmd, env=env)
             if result.returncode == PROCESS_REFRESH_EXIT_CODE:

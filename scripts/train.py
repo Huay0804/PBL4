@@ -306,10 +306,16 @@ def _publish_latest_run(run_root: Path, run_dir: Path) -> None:
         pass
 
     _clear_latest_compat_files(run_root)
+    # Only copy the lightweight .json artifacts (metadata + per-class metrics)
+    # to the run-root for legacy tooling that reads from a stable path. We do
+    # NOT copy .keras checkpoints — that previously doubled the on-disk size
+    # of every fold and inflated the output-zip by gigabytes. The `latest`
+    # symlink + timestamped subdirs are enough for resolve_segmentation_checkpoint
+    # to find best.keras / last.keras.
     for path in run_dir.iterdir():
         if not path.is_file():
             continue
-        if path.suffix not in {".keras", ".json"}:
+        if path.suffix != ".json":
             continue
         shutil.copy2(path, run_root / path.name)
 
