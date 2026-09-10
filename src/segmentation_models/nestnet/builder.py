@@ -7,8 +7,15 @@ from keras.models import Model
 from .blocks import ConvRelu
 from .blocks import Transpose2D_block
 from .blocks import Upsample2D_block
-from ..unet.blocks import BBConv
-from ..utils import to_tuple
+from .blocks import BBConv
+
+
+def _to_tuple(x):
+    if isinstance(x, tuple) and len(x) == 2:
+        return x
+    if isinstance(x, int):
+        return (x, x)
+    raise ValueError(f'Value should be tuple of length 2 or int value, got "{x}"')
 
 
 def _encoder_block(x, filters, stage, use_batchnorm):
@@ -121,7 +128,7 @@ def build_nestnet(
                 decoder_filters[decoder_idx],
                 decoder_idx + 1,
                 col,
-                upsample_rate=to_tuple(upsample_rates[decoder_idx]),
+                upsample_rate=_to_tuple(upsample_rates[decoder_idx]),
                 skip=dense_skips or None,
                 use_batchnorm=use_batchnorm,
             )(below)

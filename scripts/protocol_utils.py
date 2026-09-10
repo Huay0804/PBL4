@@ -133,6 +133,26 @@ def validate_disjoint_pair_sets(named_pairs):
                 )
 
 
+def infer_bb_source_from_path(path):
+    parts = {part.lower() for part in Path(path).parts}
+    if "mask_rcnn" in parts or "mask-rcnn" in parts:
+        return "mask_rcnn"
+    if "yolox" in parts:
+        return "yolox"
+    return None
+
+
+def validate_bb_source_path(path, bb_source, context="BB maps"):
+    if bb_source in (None, "legacy_splits"):
+        return
+    inferred = infer_bb_source_from_path(path)
+    if inferred is not None and inferred != bb_source:
+        raise SystemExit(
+            f"{context} source mismatch: bb_source='{bb_source}' resolves to "
+            f"{path}, which appears to contain '{inferred}' priors."
+        )
+
+
 def summarize_mask_paths(mask_paths, num_classes, subset_name):
     empty_stems = []
     max_label = 0

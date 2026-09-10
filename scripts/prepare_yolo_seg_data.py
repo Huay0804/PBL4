@@ -29,17 +29,18 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from project_presets import get_yolo_seg_preset
 from protocol_utils import write_json
-from yolo_seg_utils import (
-    materialize_split,
-    tooth_class_names,
-    write_data_yaml,
-)
 
 
 SPLITS_DIR = Path(os.environ.get("PBL4_SPLITS_DIR", "data/splits"))
 CLASS_MAP_PATH = Path(os.environ.get("PBL4_CLASS_MAP_PATH", "data/splits/class_map.txt"))
 YOLO_SEG_ROOT = Path(os.environ.get("PBL4_YOLO_SEG_DIR", "data/yolo_seg"))
 FOLDS = 4
+
+
+def _load_yolo_seg_utils():
+    from yolo_seg_utils import materialize_split, tooth_class_names, write_data_yaml
+
+    return materialize_split, tooth_class_names, write_data_yaml
 
 
 def _infer_num_classes(class_map_path):
@@ -58,6 +59,7 @@ def _infer_num_classes(class_map_path):
 
 
 def prepare_test_split(num_classes, min_area):
+    materialize_split, _, _ = _load_yolo_seg_utils()
     test_root = YOLO_SEG_ROOT / "test"
     stats = materialize_split(
         SPLITS_DIR / "test" / "img",
@@ -72,6 +74,7 @@ def prepare_test_split(num_classes, min_area):
 
 
 def prepare_fold(fold_index, num_classes, min_area, test_rel):
+    materialize_split, tooth_class_names, write_data_yaml = _load_yolo_seg_utils()
     fold_src = SPLITS_DIR / "folds" / f"fold_{fold_index}"
     fold_dst = YOLO_SEG_ROOT / f"fold_{fold_index}"
     train_stats = materialize_split(

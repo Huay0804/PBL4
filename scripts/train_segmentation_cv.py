@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from project_presets import DEFAULT_SEGMENTATION_MODEL, get_segmentation_preset
-from protocol_utils import load_json, merge_fold_rows, write_json
+from protocol_utils import load_json, merge_fold_rows, validate_bb_source_path, write_json
 
 
 FOLDS_DIR = Path(os.environ.get("PBL4_FOLDS_DIR", "data/splits/folds"))
@@ -100,7 +100,7 @@ def parse_args():
         default=None,
         help=(
             "Deep supervision inference output selection for fold post-training evaluation: "
-            "'average' (mean of all DS heads), 'last' (final DS head), "
+            "'average' (mean of all DS heads), 'last' (last built DS head), "
             "'index' (use --ds-output-index)."
         ),
     )
@@ -110,7 +110,7 @@ def parse_args():
         default=os.environ.get("PBL4_DS_TRAIN_HEAD"),
         help=(
             "Training target for mod_nestnet deep-supervision heads. "
-            "'last' trains only the final head, 'all' trains every head, "
+            "'last' trains only the last built head, 'all' trains every head, "
             "'index' trains --ds-train-output-index only."
         ),
     )
@@ -269,6 +269,11 @@ def _resolve_bb_maps_fold_dir(model_name, bb_source, fold_idx, fold_dir):
             f"Missing BB-maps fold directory for model '{model_name}' with source "
             f"'{bb_source}': {bb_fold_dir}"
         )
+    validate_bb_source_path(
+        bb_fold_dir,
+        bb_source,
+        context=f"{model_name} fold {fold_idx} BB maps root",
+    )
     for subset in ("train", "val"):
         subset_dir = bb_fold_dir / subset / "bb_maps"
         if not subset_dir.exists():
@@ -363,12 +368,15 @@ def main():
         if args.model == "mod_nestnet":
             cmd += [
                 "--ds-train-head", args.ds_train_head,
-                "--ds-inference", args.ds_inference,
             ]
             if args.ds_train_head == "index":
                 cmd += ["--ds-train-output-index", str(args.ds_train_output_index)]
-            if args.ds_inference == "index":
-                cmd += ["--ds-output-index", str(args.ds_output_index)]
+            if args.ds_train_head == "all":
+                cmd += ["--ds-inference", args.ds_inference]
+                if args.ds_inference == "index":
+                    cmd += ["--ds-output-index", str(args.ds_output_index)]
+        if args.model in BB_REQUIRED_MODELS:
+            cmd += ["--bb-source", args.bb_source]
         if args.eval_test:
             cmd.append("--eval-test")
         if args.mixed_precision:
@@ -421,6 +429,7 @@ def main():
     merged_folds = merge_fold_rows(existing.get("folds", []), fold_metrics)
     completed_folds = [row["fold"] for row in merged_folds]
     missing_folds = [idx for idx in range(FOLDS) if idx not in set(completed_folds)]
+    uses_multi_output_ds = args.model == "mod_nestnet" and args.ds_train_head == "all"
     summary = {
         "run_name": run_name,
         "model": args.model,
@@ -430,9 +439,9 @@ def main():
             args.ds_train_head if args.model == "mod_nestnet" else None
         ),
         "deep_supervision_train_output_index": resolve_deep_supervision_train_output_index(args),
-        "deep_supervision_eval_strategy": args.ds_inference,
+        "deep_supervision_eval_strategy": args.ds_inference if uses_multi_output_ds else None,
         "deep_supervision_eval_output_index": (
-            args.ds_output_index if args.ds_inference == "index" else None
+            args.ds_output_index if uses_multi_output_ds and args.ds_inference == "index" else None
         ),
         "checkpoint_policy": args.checkpoint_policy,
         "mixed_precision": bool(args.mixed_precision),

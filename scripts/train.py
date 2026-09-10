@@ -48,6 +48,7 @@ from protocol_utils import (
     load_json,
     resolve_segmentation_checkpoint,
     summarize_mask_paths,
+    validate_bb_source_path,
     validate_bb_map_files,
     validate_disjoint_pair_sets,
     write_json,
@@ -147,7 +148,7 @@ def parse_args():
         default=None,
         help=(
             "Deep supervision inference output selection used for post-training evaluation: "
-            "'average' (mean of all DS heads), 'last' (final DS head), "
+            "'average' (mean of all DS heads), 'last' (last built DS head), "
             "'index' (use --ds-output-index)."
         ),
     )
@@ -157,7 +158,7 @@ def parse_args():
         default=os.environ.get("PBL4_DS_TRAIN_HEAD"),
         help=(
             "Training target for mod_nestnet deep-supervision heads. "
-            "'last' trains only the final head, 'all' trains every head, "
+            "'last' trains only the last built head, 'all' trains every head, "
             "'index' trains --ds-train-output-index only."
         ),
     )
@@ -1097,6 +1098,11 @@ def main():
         )
         if not bb_maps_root.exists():
             raise SystemExit(f"BB maps directory not found: {bb_maps_root}")
+        validate_bb_source_path(
+            bb_maps_root,
+            args.bb_source,
+            context=f"{args.model} training BB maps root",
+        )
         bb_channels = num_classes
 
     base = SPLITS_DIR
@@ -1391,6 +1397,7 @@ def main():
         "class_map_path": str(CLASS_MAP_PATH),
         "bb_maps_root": str(bb_maps_root) if bb_maps_root else None,
         "bb_source": args.bb_source if bb_maps_root else None,
+        "bb_maps_root_from_env": bool(BB_MAPS_ROOT_ENV) if bb_maps_root else None,
         "num_classes": int(num_classes),
         "input_shape": list(input_shape),
         "seed": int(SEED),

@@ -4,6 +4,7 @@ from keras.layers import Conv2D
 from keras.layers import BatchNormalization
 from keras.layers import Activation
 from keras.layers import Concatenate
+from keras.layers import MaxPooling2D
 
 
 def handle_block_names(stage, cols):
@@ -105,6 +106,37 @@ def Transpose2D_block(
             relu_name=relu_name + "2",
         )(x)
 
+        return x
+
+    return layer
+
+
+def BBConv(filters, pool_steps, kernel_size=(3, 3), use_batchnorm=False, name="bbconv"):
+    def layer(x):
+        for i in range(pool_steps):
+            x = MaxPooling2D(pool_size=(2, 2), name=f"{name}_pool{i + 1}")(x)
+
+        x = Conv2D(
+            filters,
+            kernel_size,
+            padding="same",
+            name=f"{name}_conv1",
+            use_bias=not use_batchnorm,
+        )(x)
+        if use_batchnorm:
+            x = BatchNormalization(name=f"{name}_bn1")(x)
+        x = Activation("relu", name=f"{name}_relu1")(x)
+
+        x = Conv2D(
+            filters,
+            kernel_size,
+            padding="same",
+            name=f"{name}_conv2",
+            use_bias=not use_batchnorm,
+        )(x)
+        if use_batchnorm:
+            x = BatchNormalization(name=f"{name}_bn2")(x)
+        x = Activation("relu", name=f"{name}_relu2")(x)
         return x
 
     return layer

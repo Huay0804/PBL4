@@ -1,5 +1,6 @@
 # Virtual environments
 .venv/
+.venv-figures/
 venv/
 env/
 ENV/
@@ -42,6 +43,7 @@ Thumbs.db
 
 # Data and papers
 data/
+paper/
 archive/
 ref_papers/
 references/
@@ -53,6 +55,7 @@ checkpoints/
 wandb/
 
 # Model weights/artifacts
+*.keras
 *.pth
 *.pt
 *.ckpt
@@ -71,11 +74,22 @@ logs/
 
 # Local reports and scratch output
 *.docx
+*.zip
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.out
+*.synctex.gz
 tmp/
+testing/
 
 # Local assistant/scratch artifacts
 .codex
+figure1_pipeline.png
 images/
+scripts/paper/
 src.zip
 src/segmentation_models.zip
 

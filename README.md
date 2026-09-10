@@ -54,20 +54,27 @@ Recommended execution order for reproducing the comparison:
    - `kaggle_yolo_seg.ipynb`
 4. Download each notebook's result zip from `/kaggle/working`.
 
-## Required Kaggle Datasets
+## Required Kaggle Dataset
 
-The notebooks expect the data to be mounted through Kaggle's **Add data**
-panel. The exact dataset slugs can be different; the notebooks search under
-`/kaggle/input` and create symlinks automatically.
-
-### 1. Split Dataset
-
-All notebooks need a prepared split dataset containing the fixed test split and
-4 cross-validation folds. Use the Kaggle dataset:
+The notebooks expect the prepared data pack to be mounted through Kaggle's
+**Add data** panel:
 
 ```text
 https://www.kaggle.com/datasets/hieuminhhale/pbl4-splits
 ```
+
+The current `pbl4-splits` Kaggle dataset contains both the `splits/` tree and
+the detector-derived `bb_maps/` tree, so one Kaggle input is sufficient for all
+five notebooks. The notebooks search under `/kaggle/input` for
+`splits/class_map.txt` and create local symlinks automatically.
+
+### Split Data
+
+All notebooks need the prepared Kaggle data pack containing the fixed test split
+and 4 cross-validation folds. The paper protocol uses 598 images in total: 110
+images are held out for fixed-test evaluation, and the remaining 488 images are
+used for 4-fold cross-validation with 366 training and 122 validation images per
+fold.
 
 It should expose a `splits` directory with this general layout:
 
@@ -75,29 +82,32 @@ It should expose a `splits` directory with this general layout:
 splits/
   class_map.txt
   test/
-    images/
+    img/
     masks_semantic/
   folds/
     fold_0/
       train/
+        img/
+        masks_semantic/
       val/
+        img/
+        masks_semantic/
     fold_1/
-      train/
-      val/
+      ...
     fold_2/
-      train/
-      val/
+      ...
     fold_3/
-      train/
-      val/
+      ...
 ```
 
-Inside each `train`, `val`, or `test` split, the scripts expect image files and
-semantic masks in the same format used during this project.
+Inside each `train`, `val`, or `test` split, the scripts expect images under
+`img/` and semantic masks under `masks_semantic/`.
 
-### 2. Bounding-Box Prior Maps
+### Bounding-Box Prior Maps
 
 Only the prior-gated segmentation notebooks need bounding-box prior maps.
+The current Kaggle data pack includes these under `bb_maps/` as siblings of
+`splits/`; the notebooks link the mounted folders into `data/bb_maps/...`.
 
 For `kaggle_icpr_munet.ipynb`, mount a dataset containing Mask R-CNN priors:
 
@@ -136,9 +146,7 @@ The notebooks link these folders into the repository as `data/bb_maps/...`.
 ## How to Run on Kaggle
 
 1. Create a Kaggle notebook with GPU enabled.
-2. Add the required Kaggle datasets:
-   - the prepared split dataset,
-   - plus BB-prior datasets only for prior-gated models.
+2. Add the `pbl4-splits` Kaggle dataset.
 3. Upload or copy one of the notebooks from this repository.
 4. In the first configuration cell, check:
    - `REPO_URL`,
@@ -199,12 +207,17 @@ scripts/
   evaluate_final.py          # Fixed-test evaluation
   evaluate_yolo_seg.py       # YOLO-seg fixed-test evaluation
   prepare_yolo_seg_data.py   # YOLO-seg dataset materialization
+  train_mask_rcnn.py         # Mask R-CNN detector training / prior export
+  train_yolox.py             # YOLOX detector training / prior export
+  evaluate_mask_rcnn_bbox_map.py
+  evaluate_yolox_bbox_map.py
+  prepare_data.py            # HITL data conversion before split packing
+  split_dataset.py           # Fixed-test and CV split generation
   project_presets.py         # Shared training protocol presets
 
-src/segmentation_models/     # U-Net, Modified U-Net, NestNet, TransUNet code
+src/segmentation_models/     # Evaluated dense models: U-Net, Modified U-Net, NestNet, TransUNet
 src/mrcnn_tf2/                # Vendored TF2 Mask R-CNN code
 src/yolox/                    # Vendored YOLOX code
-apps/tooth_charting_assistant # Optional demo application
 ```
 
 Large artifacts are intentionally not committed. This includes:

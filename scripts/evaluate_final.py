@@ -39,6 +39,7 @@ from project_presets import DEFAULT_SEGMENTATION_MODEL, get_segmentation_preset
 from protocol_utils import (
     resolve_segmentation_checkpoint,
     summarize_mask_paths,
+    validate_bb_source_path,
     validate_bb_map_files,
     write_json,
 )
@@ -251,6 +252,11 @@ def main():
         bb_maps_dir = _resolve_test_bb_maps_dir(args)
         if not bb_maps_dir.exists():
             raise SystemExit(f"BB maps directory not found: {bb_maps_dir}")
+        validate_bb_source_path(
+            bb_maps_dir,
+            args.bb_source,
+            context=f"{args.model} test BB maps",
+        )
 
     bb_channels = None
     if len(model.inputs) > 1:

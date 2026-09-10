@@ -7,15 +7,15 @@ and the *same* reporting functions used by evaluate_final.py emit byte-compatibl
 artifacts next to the checkpoint::
 
     test_metrics.json           overall pixel-acc + macro/weighted IoU & Dice
-    test_summary.json           macro/weighted/worst IoU & Dice  (== TransUNet)
+    test_summary.json           macro/weighted/worst IoU & Dice, same summary schema
     per_class_metrics_test.json
     per_position_metrics_test.json
     per_tooth_type_metrics_test.json
     per_quadrant_metrics_test.json
     test_evaluation_metadata.json
 
-so the YOLO baselines drop straight into the comparison table alongside
-TransUNet, mod_nestnet and icpr_munet.
+These files use the same fixed-test metric schema as the dense segmentation
+scripts.
 
 Examples::
 
@@ -51,11 +51,6 @@ from project_presets import (
     resolve_yolo_seg_model,
 )
 from protocol_utils import summarize_mask_paths, write_json
-from yolo_seg_utils import (
-    list_image_mask_pairs,
-    load_semantic_mask,
-    rasterize_result,
-)
 
 SPLITS_DIR = Path(os.environ.get("PBL4_SPLITS_DIR", "data/splits"))
 CLASS_MAP_PATH = Path(os.environ.get("PBL4_CLASS_MAP_PATH", "data/splits/class_map.txt"))
@@ -153,6 +148,12 @@ def main():
     ckpt, out_dir = _resolve_checkpoint(args, model_spec)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    from yolo_seg_utils import (
+        list_image_mask_pairs,
+        load_semantic_mask,
+        rasterize_result,
+    )
 
     pairs = list_image_mask_pairs(SPLITS_DIR / "test" / "img",
                                   SPLITS_DIR / "test" / "masks_semantic")

@@ -13,7 +13,6 @@ SEGMENTATION_PRESETS = {
         "mixed_precision": True,
         "ds_train_head": "index",
         "ds_train_output_index": 2,
-        "ds_inference": "last",
         "decoder_filters": (512, 256, 128, 64),
         "process_restart_interval": 5,
         "early_stopping_patience": 4,
@@ -71,11 +70,11 @@ YOLOX_PRESET = {
 # as the dense segmenters (4-fold CV + fixed-test eval, per-class/position/
 # tooth-type IoU+Dice). They predict per-instance masks, which evaluate_yolo_seg
 # rasterizes back into a 33-class label map before scoring, so the resulting
-# test_summary.json is directly comparable to TransUNet's.
+# test_summary.json uses the same metric format as the dense segmenters.
 #
 # `weights_template` is formatted with the chosen size letter (n/s/m/l/x).
-# yolo11 ships COCO-pretrained -seg weights (the proven baseline); yolo26 is the
-# Jan-2026 SOTA "latest" comparison.
+# yolo11 is the default YOLO-seg baseline; yolo26 is included as an additional
+# YOLO-seg model family under the same fixed-test evaluation protocol.
 YOLO_SEG_MODELS = {
     "yolo11": {
         "weights_template": "yolo11{size}-seg.pt",

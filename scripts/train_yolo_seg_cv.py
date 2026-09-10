@@ -6,8 +6,8 @@ fold-merge tooling) find them in the same place as the dense segmenters.
 
 Examples::
 
-    python scripts/train_yolo_seg_cv.py --model yolo11            # proven baseline
-    python scripts/train_yolo_seg_cv.py --model yolo26 --fold 0   # latest, one fold
+    python scripts/train_yolo_seg_cv.py --model yolo11            # default baseline
+    python scripts/train_yolo_seg_cv.py --model yolo26 --fold 0   # additional baseline, one fold
     python scripts/train_yolo_seg_cv.py --model yolo11 --size l   # bigger backbone
 
 Each fold writes ``runs/cv/fold_<k>/<run_name>/weights/best.pt`` plus a
@@ -31,9 +31,9 @@ from project_presets import (
     resolve_yolo_seg_model,
 )
 from protocol_utils import write_json
-from prepare_yolo_seg_data import YOLO_SEG_ROOT, main as prepare_main
 
 OUTPUT_ROOT = Path("runs/cv")
+YOLO_SEG_ROOT = Path(os.environ.get("PBL4_YOLO_SEG_DIR", "data/yolo_seg"))
 FOLDS = 4
 
 
@@ -62,6 +62,8 @@ def _ensure_dataset():
         (YOLO_SEG_ROOT).glob("fold_*/data.yaml")
     ):
         print("Dataset views missing — materializing with prepare_yolo_seg_data...")
+        from prepare_yolo_seg_data import main as prepare_main
+
         prepare_main()
 
 
