@@ -68,12 +68,6 @@ reused.
 
 Download the [trained model checkpoints from Google Drive](https://drive.google.com/drive/folders/1DgqOt-Sio_r9KKLF5CJzK96l2EOXfv7O?usp=sharing).
 
-Each fold exports test summaries and metrics by class, tooth position, and tooth
-type.
-
-Dense-model notebooks export `<model>_models.zip` (`.keras` checkpoints) and
-`<model>_results.zip` (evaluation JSON files). The YOLO notebook exports
-`yolo_seg_models.zip` (`best.pt` checkpoints) and `yolo_seg_results.zip`.
 
 ## References
 
