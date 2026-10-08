@@ -1,270 +1,82 @@
 # PBL4 Teeth Segmentation
 
-This repository contains the code used for a comparative study of tooth
-segmentation models on panoramic dental X-ray images. The intended way to
-reproduce the experiments is through the Kaggle notebooks in the repository,
-not by setting up the full stack locally.
+## Overview
 
-The notebooks clone this repository inside a Kaggle session, link the mounted
-Kaggle datasets to the paths expected by the scripts, train the selected model
-over 4 cross-validation folds, evaluate each fold on the fixed test set, and
-package the checkpoints and metrics for download.
+This project compares six models for 33-class semantic tooth segmentation in
+panoramic dental X-rays. Training and evaluation are organized in Kaggle
+notebooks, with four cross-validation folds and a fixed held-out test set.
 
-## Kaggle-First Workflow
+## Models
 
-Use Kaggle for training and evaluation. Local execution is not the recommended
-entrypoint because the project combines TensorFlow/Keras segmentation models,
-YOLO/YOLOX tooling, Mask R-CNN prior maps, large datasets, and GPU-specific
-memory settings.
-
-Each notebook is self-contained and follows the same structure:
-
-1. Configure repository and dataset paths.
-2. Clone or update this repository from GitHub.
-3. Link mounted Kaggle datasets into `data/splits` and, when needed,
-   `data/bb_maps`.
-4. Train all 4 folds.
-5. Evaluate each fold on the fixed test set.
-6. Print summary metrics.
-7. Zip model checkpoints and result files into `/kaggle/working`.
-
-Interrupted runs can be resumed. The notebooks skip folds that already contain
-the expected best checkpoint, so a Kaggle session can continue from uploaded or
-previously generated results.
-
-## Notebooks
-
-| Notebook | Purpose | Required Kaggle inputs |
+| Model | Input | Notebook |
 | --- | --- | --- |
-| `kaggle_icpr_unet.ipynb` | Image-only ICPR U-Net baseline | Split dataset only |
-| `kaggle_icpr_munet.ipynb` | ICPR Modified U-Net with Mask R-CNN bounding-box priors | Split dataset + Mask R-CNN BB maps |
-| `kaggle_mod_nestnet.ipynb` | Modified NestNet / UNet++ with YOLOX bounding-box priors | Split dataset + YOLOX BB maps |
-| `kaggle_transunet.ipynb` | Image-only TransUNet baseline | Split dataset only |
-| `kaggle_yolo_seg.ipynb` | YOLO instance-segmentation baselines (`yolo11`, `yolo26`) | Split dataset only |
+| ICPR U-Net | X-ray | `kaggle_icpr_unet.ipynb` |
+| ICPR Modified U-Net | X-ray + Mask R-CNN bounding-box priors | `kaggle_icpr_munet.ipynb` |
+| Modified NestNet / UNet++ | X-ray + YOLOX bounding-box priors | `kaggle_mod_nestnet.ipynb` |
+| TransUNet | X-ray | `kaggle_transunet.ipynb` |
+| YOLO11-seg and YOLO26-seg | X-ray | `kaggle_yolo_seg.ipynb` |
 
-Recommended execution order for reproducing the comparison:
+Modified NestNet uses the third output head (zero-based index 2) for training
+and evaluation. YOLO instance masks are converted to semantic masks for
+evaluation. Mask R-CNN and YOLOX provide the bounding-box priors for the two
+prior-guided models.
 
-1. Run the image-only baselines:
-   - `kaggle_icpr_unet.ipynb`
-   - `kaggle_transunet.ipynb`
-2. Run the prior-gated models:
-   - `kaggle_icpr_munet.ipynb`
-   - `kaggle_mod_nestnet.ipynb`
-3. Run the detector-segmentation baselines:
-   - `kaggle_yolo_seg.ipynb`
-4. Download each notebook's result zip from `/kaggle/working`.
+## Dataset
 
-## Required Kaggle Dataset
+Add the [prepared dataset on Kaggle](https://www.kaggle.com/datasets/hieuminhhale/pbl4-splits)
+to the notebook. It includes the image splits, semantic masks, and bounding-box
+prior maps needed by all five notebooks.
 
-The notebooks expect the prepared data pack to be mounted through Kaggle's
-**Add data** panel:
+The dataset contains 598 images:
 
-```text
-https://www.kaggle.com/datasets/hieuminhhale/pbl4-splits
-```
+- **110 images** form the fixed test set.
+- **488 images** are divided into four cross-validation folds, each with
+  **366 training** and **122 validation** images.
 
-The current `pbl4-splits` Kaggle dataset contains both the `splits/` tree and
-the detector-derived `bb_maps/` tree, so one Kaggle input is sufficient for all
-five notebooks. The notebooks search under `/kaggle/input` for
-`splits/class_map.txt` and create local symlinks automatically.
-
-### Split Data
-
-All notebooks need the prepared Kaggle data pack containing the fixed test split
-and 4 cross-validation folds. The paper protocol uses 598 images in total: 110
-images are held out for fixed-test evaluation, and the remaining 488 images are
-used for 4-fold cross-validation with 366 training and 122 validation images per
-fold.
-
-It should expose a `splits` directory with this general layout:
+The notebooks locate `splits/class_map.txt` under `/kaggle/input` and link the
+mounted data to the expected local paths. In the layout below, braces indicate
+separate directories: `{img,masks_semantic}` means `img/` and `masks_semantic/`.
 
 ```text
 splits/
   class_map.txt
-  test/
-    img/
-    masks_semantic/
-  folds/
-    fold_0/
-      train/
-        img/
-        masks_semantic/
-      val/
-        img/
-        masks_semantic/
-    fold_1/
-      ...
-    fold_2/
-      ...
-    fold_3/
-      ...
-```
-
-Inside each `train`, `val`, or `test` split, the scripts expect images under
-`img/` and semantic masks under `masks_semantic/`.
-
-### Bounding-Box Prior Maps
-
-Only the prior-gated segmentation notebooks need bounding-box prior maps.
-The current Kaggle data pack includes these under `bb_maps/` as siblings of
-`splits/`; the notebooks link the mounted folders into `data/bb_maps/...`.
-
-For `kaggle_icpr_munet.ipynb`, mount a dataset containing Mask R-CNN priors:
-
-```text
+  test/{img,masks_semantic}/
+  folds/fold_0/{train,val}/{img,masks_semantic}/
+  ...                         # folds 1–3
 bb_maps/
   mask_rcnn/
-    test/
-      bb_maps/
-    folds/
-      fold_0/
-        train/
-          bb_maps/
-        val/
-          bb_maps/
-      ...
+    test/bb_maps/
+    folds/fold_0/{train,val}/bb_maps/
+    ...                       # folds 1–3
+  yolox/                      # same layout as mask_rcnn
 ```
 
-For `kaggle_mod_nestnet.ipynb`, mount a dataset containing YOLOX priors:
+## Running the Experiments
 
-```text
-bb_maps/
-  yolox/
-    test/
-      bb_maps/
-    folds/
-      fold_0/
-        train/
-          bb_maps/
-        val/
-          bb_maps/
-      ...
-```
+1. Open one of the notebooks on Kaggle and enable a GPU.
+2. Add the `pbl4-splits` dataset.
+3. Check `REPO_URL`, `REPO_DIR`, and any dataset path overrides in the
+   configuration cell. The repository must be accessible from the Kaggle session.
+4. Run the notebook and download the output archives from `/kaggle/working`.
 
-The notebooks link these folders into the repository as `data/bb_maps/...`.
+Each notebook sets up the data paths, trains across all four folds, and evaluates
+each fold's best checkpoint on the fixed test set. Folds with an existing best
+checkpoint are skipped during training, allowing previously saved outputs to be
+reused.
 
-## How to Run on Kaggle
+## Checkpoints and Outputs
 
-1. Create a Kaggle notebook with GPU enabled.
-2. Add the `pbl4-splits` Kaggle dataset.
-3. Upload or copy one of the notebooks from this repository.
-4. In the first configuration cell, check:
-   - `REPO_URL`,
-   - `REPO_DIR`,
-   - any explicit dataset path if the notebook exposes one.
-5. Run all cells from top to bottom.
-6. Download the generated zip files from `/kaggle/working`.
+Download the [trained model checkpoints from Google Drive](https://drive.google.com/drive/folders/1DgqOt-Sio_r9KKLF5CJzK96l2EOXfv7O?usp=sharing).
 
-If the GitHub repository is private, replace `REPO_URL` in the notebook with an
-authenticated URL or make the repository accessible to the Kaggle session.
+Each fold exports test summaries and metrics by class, tooth position, and tooth
+type.
 
-## Outputs
+Dense-model notebooks export `<model>_models.zip` (`.keras` checkpoints) and
+`<model>_results.zip` (evaluation JSON files). The YOLO notebook exports
+`yolo_seg_models.zip` (`best.pt` checkpoints) and `yolo_seg_results.zip`.
 
-Dense segmentation notebooks package two zip files:
+## References
 
-```text
-<model>_models.zip
-<model>_results.zip
-```
-
-The model zip contains the best fold checkpoints, usually `best.keras`. The
-results zip contains metrics and summaries such as:
-
-```text
-test_summary.json
-test_metrics.json
-per_class_metrics_test.json
-per_position_metrics_test.json
-per_tooth_type_metrics_test.json
-```
-
-The YOLO-seg notebook similarly writes:
-
-```text
-yolo_seg_models.zip
-yolo_seg_results.zip
-```
-
-The YOLO model zip contains `best.pt` checkpoints. The results zip contains the
-same fixed-test metric format used by the dense segmentation models, plus YOLO
-summary files and plots when available.
-
-## Repository Layout
-
-The notebooks are the public entrypoints. The Python scripts and packages are
-implementation details called by those notebooks.
-
-```text
-kaggle_icpr_unet.ipynb       # ICPR U-Net baseline
-kaggle_icpr_munet.ipynb      # Modified U-Net with Mask R-CNN priors
-kaggle_mod_nestnet.ipynb     # Modified NestNet with YOLOX priors
-kaggle_transunet.ipynb       # TransUNet baseline
-kaggle_yolo_seg.ipynb        # YOLO11/YOLO26 segmentation baselines
-
-scripts/
-  train_segmentation_cv.py   # CV wrapper for dense segmentation models
-  train.py                   # Keras segmentation training/evaluation engine
-  evaluate_final.py          # Fixed-test evaluation
-  evaluate_yolo_seg.py       # YOLO-seg fixed-test evaluation
-  prepare_yolo_seg_data.py   # YOLO-seg dataset materialization
-  train_mask_rcnn.py         # Mask R-CNN detector training / prior export
-  train_yolox.py             # YOLOX detector training / prior export
-  evaluate_mask_rcnn_bbox_map.py
-  evaluate_yolox_bbox_map.py
-  prepare_data.py            # HITL data conversion before split packing
-  split_dataset.py           # Fixed-test and CV split generation
-  project_presets.py         # Shared training protocol presets
-
-src/segmentation_models/     # Evaluated dense models: U-Net, Modified U-Net, NestNet, TransUNet
-src/mrcnn_tf2/                # Vendored TF2 Mask R-CNN code
-src/yolox/                    # Vendored YOLOX code
-```
-
-Large artifacts are intentionally not committed. This includes:
-
-```text
-data/
-runs/
-outputs/
-checkpoints/
-*.keras
-*.pt
-*.docx
-```
-
-Keep generated results in Kaggle outputs or external storage, not in the Git
-repository.
-
-## Experiment Protocol
-
-The notebooks use the same high-level comparison protocol:
-
-- 4-fold cross-validation for training and validation.
-- A fixed held-out test set for final fold evaluation.
-- Best-checkpoint evaluation for each fold.
-- Shared semantic label space of 33 classes.
-- Dense segmentation metrics exported in the same JSON format across models.
-
-Important model-specific notes:
-
-- `icpr_unet` and `transunet` are image-only baselines.
-- `icpr_munet` consumes Mask R-CNN bounding-box prior maps.
-- `mod_nestnet` consumes YOLOX bounding-box prior maps and uses the configured
-  deep-supervision head used in the project protocol.
-- `yolo11` and `yolo26` are detector-segmentation baselines whose instance masks
-  are rasterized into the same semantic evaluation format.
-
-## Credits and References
-
-- Reference pipeline paper:
-  [Automatic tooth segmentation on panoramic X-rays using deep neural networks (ICPR 2022)](https://www.polytech.univ-nantes.fr/autrusseau-f/Papers/ICPR2022_Odon.pdf)
-- TF2 Mask R-CNN code source used in this project:
-  [z-mahmud22/Mask-RCNN_TF2.14.0](https://github.com/z-mahmud22/Mask-RCNN_TF2.14.0)
-- Original Mask R-CNN implementation that the TF2 port is based on:
-  [matterport/Mask_RCNN](https://github.com/matterport/Mask_RCNN)
-- YOLOX detector code source used in this project:
-  [Megvii-BaseDetection/YOLOX](https://github.com/Megvii-BaseDetection/YOLOX)
-
-The vendored `src/mrcnn_tf2/` code is credited to the TensorFlow 2 port above
-and to the original Matterport `Mask_RCNN` project. Source headers and license
-notices are preserved locally under the MIT license.
+- [Automatic tooth segmentation on panoramic X-rays using deep neural networks (ICPR 2022)](https://www.polytech.univ-nantes.fr/autrusseau-f/Papers/ICPR2022_Odon.pdf) — reference pipeline.
+- [Mask-RCNN_TF2.14.0](https://github.com/z-mahmud22/Mask-RCNN_TF2.14.0) — TensorFlow 2 port used in this project, based on [Matterport Mask R-CNN](https://github.com/matterport/Mask_RCNN). Source headers and MIT license notices are retained in `src/mrcnn_tf2/`.
+- [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) — detector implementation used for YOLOX priors.
